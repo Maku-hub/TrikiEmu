@@ -1,0 +1,13 @@
+# Przykladowa sekwencja ruchu dla pc_motion_file.py (format keyframe: 7 kolumn).
+# Kolumny: t[s], gx, gy, gz [deg/s], ax, ay, az [g]. Tool interpoluje miedzy wierszami.
+# Duplikat tego samego t = natychmiastowy skok, potem przytrzymanie wartosci.
+#
+#  t,   gx,  gy,   gz,   ax,   ay,   az
+  0.0,   0,   0,    0,    0,    0,  1.0   # spoczynek
+  1.0,   0,   0,    0,    0,    0,  1.0
+  1.0,   0,   0,  180,    0,    0,  1.0   # obrot wokol Z, 180 deg/s
+  3.0,   0,   0,  180,    0,    0,  1.0
+  3.0,   0,   0,    0,  0.70,   0,  0.70  # przechyl (grawitacja na X)
+  5.0,   0,   0,    0,  0.70,   0,  0.70
+  5.5,  90,   0,    0,    0,    0,  1.0   # krotki obrot wokol X
+  6.0,   0,   0,    0,    0,    0,  1.0   # powrot do spoczynku

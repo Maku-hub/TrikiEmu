@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# PlatformIO (firmware build cache — regenerowane, setki MB)
+.pio/
+
+# Bugreporty Androida (duze; btsnoop wyciagamy osobno)
+*.zip
+
+# Captures (may contain personal BLE traffic — keep out of git by default)
+*.btsnoop
+btsnoop_hci.log
+*.pcap
+*.pcapng
+captures/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
