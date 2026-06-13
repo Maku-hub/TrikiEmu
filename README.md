@@ -7,8 +7,9 @@ prawdziwym kapslem**, a ruch podajesz z komputera (klawiatura / plik / wzorzec).
 
 To **siostrzany projekt  [TrikiScope](https://github.com/Maku-hub/TrikiScope)** (czytnik/inspektor
 kapsla).  [TrikiScope](https://github.com/Maku-hub/TrikiScope) jest BLE *centralem* (klientem); TrikiEmu robi odwrotną rolę —
-*peripheral*. Cała wiedza o protokole pochodzi z RE w  [TrikiScope](https://github.com/Maku-hub/TrikiScope) i z własnego
-przechwytu Android HCI snoop.
+*peripheral*. Cała wiedza o protokole pochodzi z RE w  [TrikiScope](https://github.com/Maku-hub/TrikiScope) i z własnego przechwytu Android HCI snoop.
+
+![Demo działania](images/demo.gif)
 
 ## Status
 
