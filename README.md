@@ -16,6 +16,8 @@ kapsla).  [TrikiScope](https://github.com/Maku-hub/TrikiScope) jest BLE *central
 - **Test  [TrikiScope](https://github.com/Maku-hub/TrikiScope)** (central) — zaliczony: reklama + GATT zgodne, strumień ~98 Hz.
 - **Aplikacja Żappka** — **łączy się i reaguje na ruch** (interop potwierdzony na M5StickC Plus2).
 - Sterowanie ruchem z PC po USB-serial: klawiatura (na żywo), plik CSV, wzorzec, autodetekcja portu.
+- **Zapis wyniku gry wymaga prawdziwego kapsla** — jest bramkowany kryptograficznym
+  uwierzytelnieniem urządzenia (zob. [Zapis wyniku — odkrycie RE](#zapis-wyniku-w-grach--uwierzytelnienie-kryptograficzne-odkrycie-re)).
 
 Pełna specyfikacja protokołu (reklama, GATT, komendy, ramka IMU) i pułapki
 implementacyjne: [firmware/README.md](firmware/README.md).
@@ -110,6 +112,62 @@ Projekt zrealizowano jako **wariant A — software'owa emulacja całej komunikac
 
 Wybrana platforma: **M5StickC Plus2 (ESP32-PICO-V3-02)**; rdzeń przenośny na każdy ESP32.
 Szczegóły kontraktu protokołu i implementacji: [firmware/README.md](firmware/README.md).
+
+## Zapis wyniku w grach — uwierzytelnienie kryptograficzne (odkrycie RE)
+
+Z reverse-engineeringu (zrzut HCI snoop z **prawdziwym** kapslem, analiza
+`tools/btsnoop_att.py`) wynika, że **zapis najlepszego wyniku jest bramkowany
+kryptograficznym uwierzytelnieniem urządzenia** (challenge–response), wplecionym w
+**całą rundę**, a nie w pojedynczy komunikat na końcu:
+
+```text
+faza             apka → kapsel (RX 6e400002)      kapsel → apka (TX 6e400003)
+──────────────────────────────────────────────────────────────────────────────
+START strumienia  20 10 ..
+INIT sesji        0a <16B LOSOWY id> <payload>    21 .. (ack) + 8a <id> <dane>   ← liczone z klucza
+w trakcie (~1/s)  09 <id> 20 <32B>                89 <licznik> <dane> / 21 <..>  (ramki IMU 22 00 wplecione)
+STOP              20 00
+domknięcie        09 <id> 20 <32B>  (×~2)         89 / 8a ..
+```
+
+- Identyfikator sesji (`id`) jest **losowy na każdą rundę** → odpowiedzi kapsla **nie da się
+  odtworzyć** z nagrania.
+- Opcode odpowiedzi = opcode żądania `| 0x80` (`0a`→`8a`, `09`→`89`); `21` to status/ACK.
+- Odpowiedzi `8a`/`89` są **liczone z sekretnego klucza kapsla**. Aplikacja je weryfikuje, by
+  potwierdzić autentyczny kapsel, i **dopiero wtedy zapisuje wynik**.
+
+**Emulator tego nie odtworzy — i celowo tego nie robimy.** Klucz kapsla jest w jego
+firmwarze pod **APPROTECT** (nie do wyciągnięcia), a losowy `id` sesji wyklucza replay.
+Przede wszystkim to mechanizm **uwierzytelniania urządzenia / anty-cheat** chroniący
+integralność systemu nagród/rankingu — jego obchodzenie jest **poza granicą projektu**
+(patrz niżej). Sama **rozgrywka działa na surowym strumieniu IMU** (dlatego emulator gra),
+ale **zapis wyniku wymaga prawdziwego kapsla**.
+
+## Przechwytywanie do RE: log Bluetooth (adb) i ekran telefonu (scrcpy)
+
+Narzędzia, którymi powstała powyższa analiza protokołu. Wymagają **Debugowania USB**
+(Opcje programisty na telefonie) i potwierdzenia „Zezwól" przy podłączeniu kabla.
+
+**Log komunikacji Bluetooth (HCI snoop)** — co telefon wymienia z kapslem:
+
+1. Telefon: Opcje programisty → włącz **„Dziennik podglądu HCI Bluetooth"**, potem
+   **wyłącz i włącz Bluetooth** (logowanie startuje).
+2. Odtwórz scenariusz (np. zagraj rundę aż do zapisu wyniku), następnie **wyłącz Bluetooth**
+   (to domyka log). **Nie włączaj BT ponownie** do czasu pobrania — ponowne włączenie obcina log.
+3. PC (adb jest w paczce scrcpy lub w Android SDK Platform-Tools): uruchom
+   `adb bugreport bugreport.zip`. Log siedzi w zip pod `FS/data/log/bt/btsnoop_hci.log`
+   (na innych telefonach `FS/data/misc/bluetooth/logs/btsnoop_hci.log`) — wypakuj go do `captures/`.
+4. Analiza:
+   - `python tools/btsnoop_att.py captures/<log>` — **cały ruch ATT** chronologicznie, mapa
+     handle→UUID, okno czasowe `--from/--to`, `--imu` dołącza strumień IMU. Do badania
+     komend/handshake'u (np. zapisu wyniku).
+   - `python tools/parse_btsnoop.py captures/<log>` — dekoduje **strumień IMU** (ramki 14 B).
+
+**Podgląd ekranu telefonu na PC (scrcpy)** — przydatny przy obserwacji gry podczas RE:
+
+1. Telefon: włącz **Debugowanie USB**, podłącz USB, potwierdź „Zezwól".
+2. PC: `winget install --id Genymobile.scrcpy` (paczka zawiera też `adb`).
+3. Uruchom `scrcpy` → okno z obrazem telefonu na żywo.
 
 ## Zakres i granica (ważne)
 
