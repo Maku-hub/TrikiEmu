@@ -136,12 +136,39 @@ domknięcie        09 <id> 20 <32B>  (×~2)         89 / 8a ..
 - Odpowiedzi `8a`/`89` są **liczone z sekretnego klucza kapsla**. Aplikacja je weryfikuje, by
   potwierdzić autentyczny kapsel, i **dopiero wtedy zapisuje wynik**.
 
-**Emulator tego nie odtworzy — i celowo tego nie robimy.** Klucz kapsla jest w jego
+Klucz kapsla jest w jego
 firmwarze pod **APPROTECT** (nie do wyciągnięcia), a losowy `id` sesji wyklucza replay.
 Przede wszystkim to mechanizm **uwierzytelniania urządzenia / anty-cheat** chroniący
 integralność systemu nagród/rankingu — jego obchodzenie jest **poza granicą projektu**
 (patrz niżej). Sama **rozgrywka działa na surowym strumieniu IMU** (dlatego emulator gra),
 ale **zapis wyniku wymaga prawdziwego kapsla**.
+
+### Czy to w ogóle da się podrobić? (analiza, dla zainteresowanych)
+
+To klasyczna **atestacja urządzenia** (challenge–response: udowodnij posiadanie sekretu,
+nie ujawniając go). Czy da się ją obejść, rozstrzyga **jak aplikacja WERYFIKUJE odpowiedź** —
+a tego z samego ruchu nie widać. Trzy modele i ich konsekwencje:
+
+- **Symetryczny (klucz współdzielony)** — apka też zna klucz, sama liczy i porównuje. Wtedy
+  **klucz jest w aplikacji** → do wyciągnięcia z APK. Najtańszy i najsłabszy wzorzec; atak
+  jest wtedy na apkę, nie na kapsel.
+- **Asymetryczny (podpis)** — kapsel podpisuje kluczem **prywatnym**, apka weryfikuje
+  **publicznym**. W aplikacji nie ma sekretu → trzeba klucza prywatnego z kapsla. Mocny wzorzec.
+- **Weryfikacja serwerowa** — apka oddaje challenge+response do serwera Żabki; lokalnie nic nie wyciągniesz.
+
+Powierzchnia ataku (kategorie):
+
+- **Replay** nagranej odpowiedzi → **odpada**, bo `id` sesji jest losowy (nonce). To zrobiono dobrze.
+- **RE aplikacji** → realne tylko w modelu symetrycznym (klucz w apce).
+- **Ekstrakcja klucza ze sprzętu** → readout-protection (APPROTECT / flash encryption) bywa
+  omijalne znanymi klasami ataków hardware (fault/voltage glitching, side-channel/DPA, decap +
+  microprobing) — kosztowne, sprzętowo-specyficzne.
+- **Kryptoanaliza protokołu** → jeśli to słabe/„domowe" krypto zamiast standardowego AEAD.
+
+**Bottom line:** jeśli to asymetryk + **unikalny klucz w utwardzonym elemencie** — praktycznie
+niewykonalne bez drogich ataków sprzętowych (i o to chodzi: antypodróbkowa atestacja, ta sama
+idea co mutual-auth + nonce + klucz w secure element). Realne dziury to zwykle **implementacja**
+(klucz w apce, słaby nonce, glitchowalny MCU, brak weryfikacji tam gdzie trzeba) — nie sama idea.
 
 ## Przechwytywanie do RE: log Bluetooth (adb) i ekran telefonu (scrcpy)
 
