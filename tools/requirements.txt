@@ -1,0 +1,2 @@
+# Zaleznosci narzedzi PC (tools/). Instalacja:  pip install -r tools/requirements.txt
+pyserial>=3.5

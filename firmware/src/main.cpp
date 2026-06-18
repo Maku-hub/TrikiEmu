@@ -35,7 +35,7 @@ static const char* NUS_TX      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // noti
 static const char* NUS_VENDOR  = "6e400004-b5a3-f393-e0a9-e50e24dcca9e"; // read/write (bit0 = LED)
 
 // ---- Wersja firmware TrikiEmu (rozna od emulowanej fw kapsla "3.2.1-A") ----
-static const char* TRIKIEMU_VERSION = "0.9.0";
+static const char* TRIKIEMU_VERSION = "1.0.0";
 
 // ---- Tozsamosc (z prawdziwego kapsla) ----
 // DEVICE_NAME: numer (Device ID) to przyklad — sama nazwa/numer nie sa krytyczne.

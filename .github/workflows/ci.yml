@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  firmware:
+    name: Build firmware (PlatformIO)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Cache PlatformIO i pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+      - name: Instalacja PlatformIO
+        run: pip install platformio
+      - name: Build wszystkich srodowisk
+        working-directory: firmware
+        run: pio run -e esp32dev -e m5stickc_plus2
+
+  tools:
+    name: Narzedzia Python (compile + lint)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Instalacja zaleznosci
+        run: pip install -r tools/requirements.txt ruff
+      - name: Compile-check (py_compile)
+        run: python -m py_compile tools/*.py
+      - name: Lint (ruff, informacyjnie)
+        run: ruff check tools/
+        continue-on-error: true

@@ -1,5 +1,10 @@
 # TrikiEmu
 
+[![CI](https://github.com/Maku-hub/TrikiEmu/actions/workflows/ci.yml/badge.svg)](https://github.com/Maku-hub/TrikiEmu/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platforma](https://img.shields.io/badge/platforma-ESP32%20%7C%20M5StickC%20Plus2-blue)](firmware/platformio.ini)
+[![Release](https://img.shields.io/github/v/release/Maku-hub/TrikiEmu)](https://github.com/Maku-hub/TrikiEmu/releases)
+
 **Software'owy emulator kapsla Żabka Triki** — urządzenie ESP32 w roli BLE
 *peripheral* (serwer GATT), które udaje kapsel: reklamuje się jak Triki, wystawia
 usługę Nordic UART i nadaje strumień IMU. Aplikacja **Żappka łączy się z nim jak z

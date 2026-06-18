@@ -7,6 +7,10 @@ __pycache__/
 # PlatformIO (firmware build cache — regenerowane, setki MB)
 .pio/
 
+# Artefakty wydania (gotowe obrazy do flashowania — wgrywane jako Release assets)
+dist/
+build/
+
 # Bugreporty Androida (duze; btsnoop wyciagamy osobno)
 *.zip
 
