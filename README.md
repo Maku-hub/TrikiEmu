@@ -14,7 +14,16 @@ To **siostrzany projekt  [TrikiScope](https://github.com/Maku-hub/TrikiScope)** 
 kapsla).  [TrikiScope](https://github.com/Maku-hub/TrikiScope) jest BLE *centralem* (klientem); TrikiEmu robi odwrotną rolę —
 *peripheral*. Cała wiedza o protokole pochodzi z RE w  [TrikiScope](https://github.com/Maku-hub/TrikiScope) i z własnego przechwytu Android HCI snoop.
 
-![Demo działania](images/demo.gif)
+<table>
+  <tr>
+    <td align="center"><img src="images/demo_snake.gif" width="280" alt="demo_snake.gif"></td>
+    <td align="center"><img src="images/demo_toss.gif" width="280" alt="demo_toss.gif"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>demo_snake.gif</sub></td>
+    <td align="center"><sub>demo_toss.gif</sub></td>
+  </tr>
+</table>
 
 ## Status
 
