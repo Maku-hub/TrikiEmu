@@ -12,6 +12,8 @@ M5StickC Plus2 (ekran/przyciski/IMU/bateria) to **opcja** włączana flagą `-D 
 - **Goły ESP32** (`env:esp32dev`): sterowanie wyłącznie z PC po USB-serial. Brak ekranu/przycisków.
 - **M5StickC Plus2** (`env:m5stickc_plus2`): + ekran ze stanem, przyciski (BLE on/off, uśpienie),
   realny IMU MPU6886 jako alternatywne źródło ruchu, poziom baterii.
+- **LilyGo T-Embed-CC1101** (`env:t_embed_cc1101`): + ekran ST7789, przycisk USER
+  (BLE on/off); płytka nie ma IMU, więc używa źródła ruchu z USB-serial.
 
 ---
 
@@ -104,11 +106,11 @@ offset 0    1     2..3   4..5   6..7   8..9   10..11 12..13
 
 ## Pułapki implementacyjne (ESP32 + NimBLE — kosztowały czas)
 
-- **Adres random static:** `ble_hs_id_set_rnd(addr_le)` (bajty **LSB-first**). Ale
-  `NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM)` w NimBLE-Arduino **włącza
-  prywatność (RPA)** → urządzenie reklamuje losowy adres prywatny zamiast Twojego.
-  Trzeba **wyłączyć prywatność**: `ble_hs_pvcy_rpa_config(0)`. Kolejność:
-  `setOwnAddrType(RANDOM)` → `ble_hs_pvcy_rpa_config(0)` → `ble_hs_id_set_rnd(addr)`.
+- **Adres random static:** `ble_hs_id_set_rnd(addr_le)` (bajty **LSB-first**).
+  `NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM)` wybiera typ adresu random.
+  Jeśli dana konfiguracja NimBLE włącza host-based privacy, kod warunkowo wywołuje
+  `ble_hs_pvcy_rpa_config(0)`, aby wyłączyć RPA. Na konfiguracjach bez tej funkcji
+  wywołanie jest pomijane, dzięki czemu T-Embed poprawnie się linkuje.
 - **16-bit UUID `0x0001` w scan response:** `setCompleteServices(NimBLEUUID((uint16_t)0x0001))`.
 - **Płynne ~100 Hz:** poproś o krótki interwał połączenia w `onConnect`
   (`updateConnParams(handle, 6, 12, 0, 200)` = 7.5–15 ms).
@@ -128,6 +130,7 @@ PlatformIO Core (CLI) lub wtyczka PlatformIO IDE. Z katalogu `firmware/`:
 pio run                              # buduje domyslne env (m5stickc_plus2)
 pio run -e esp32dev                  # buduje wersje na gole ESP32
 pio run -e m5stickc_plus2 -t upload  # wgrywa na M5StickC Plus2
+pio run -e t_embed_cc1101 -t upload  # wgrywa na LilyGo T-Embed-CC1101
 pio run -e esp32dev -t upload        # wgrywa na gole ESP32 (DevKit)
 pio device monitor                   # log szeregowy (115200)
 ```
@@ -153,6 +156,9 @@ Gotowe narzędzia PC (`pc_control`, `pc_keyboard` ze sterowaniem klawiaturą, `p
 
 Na gołym ESP32 reklama startuje **od razu** po włączeniu (brak przycisków) — z PC
 wyłączasz przez `BLE,0`. Na M5 startuje w IDLE (przycisk A włącza).
+Na T-Embed-CC1101 reklama startuje w IDLE; przycisk USER (GPIO6) przełącza BLE.
+Przycisk enkodera (GPIO0) budzi przygaszony ekran. Ekran ST7789 korzysta z pinów
+CS=41, DC=16, BL=21, SCLK=11, MOSI=9, MISO=10.
 
 ## Sterowanie na M5StickC Plus2 (przyciski / zasilanie / ekran)
 

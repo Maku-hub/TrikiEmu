@@ -6,6 +6,7 @@ __pycache__/
 
 # PlatformIO (firmware build cache — regenerowane, setki MB)
 .pio/
+.pio-home/
 
 # Artefakty wydania (gotowe obrazy do flashowania — wgrywane jako Release assets)
 dist/

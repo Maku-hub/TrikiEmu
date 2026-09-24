@@ -18,14 +18,37 @@
 #include <NimBLEDevice.h>
 #include <math.h>
 
+#if defined(HAS_M5) && defined(HAS_T_EMBED_CC1101)
+  #error "Wybierz tylko jedna platforme: HAS_M5 albo HAS_T_EMBED_CC1101"
+#endif
+
+#if !defined(HAS_M5) && !defined(HAS_T_EMBED_CC1101)
+  #define TRIKI_GENERIC_ESP32
+#endif
+
 // Funkcje hosta NimBLE (linkowane z biblioteki): ustawienie statycznego adresu
-// random oraz konfiguracja prywatnosci (0 = wylacz RPA -> uzyj statycznego adresu).
+// random. NimBLE 1.4.x kompiluje konfiguracje prywatnosci warunkowo, dlatego
+// wywolujemy ble_hs_pvcy_rpa_config() tylko wtedy, gdy biblioteka wlaczyla
+// host-based privacy. setOwnAddrType() obsluguje pozostale warianty wewnatrz
+// biblioteki, a ble_hs_id_set_rnd() ustawia nasz adres random static.
 extern "C" int ble_hs_id_set_rnd(const uint8_t *rnd_addr);
-extern "C" int ble_hs_pvcy_rpa_config(uint8_t enabled);
+#if defined(MYNEWT_VAL) && MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+  extern "C" int ble_hs_pvcy_rpa_config(uint8_t enabled);
+  #define TRIKI_HAS_NIMBLE_HOST_PRIVACY
+#endif
 
 #ifdef HAS_M5
   #include <M5Unified.h>
   #include <esp_sleep.h>
+#endif
+
+#ifdef HAS_T_EMBED_CC1101
+  #include <TFT_eSPI.h>
+  #include <esp_sleep.h>
+  static TFT_eSPI tEmbedDisplay;
+  static const uint8_t T_EMBED_USER_KEY = 6;
+  static const uint8_t T_EMBED_ENCODER_KEY = 0;
+  static const uint8_t T_EMBED_DISPLAY_BL = 21;
 #endif
 
 // ---- Nordic UART Service (NUS) ----
@@ -101,6 +124,46 @@ static const uint32_t SCREEN_DIM_MS     = 30000;   // wygas ekran po 30 s bezczy
 static const uint32_t ADV_TIMEOUT_MS    = 180000;  // 3 min reklamy bez polaczenia -> idle
 #endif
 
+#ifdef HAS_T_EMBED_CC1101
+static bool tEmbedScreenOn = true;
+static uint32_t tEmbedLastInteractMs = 0;
+static const uint32_t T_EMBED_SCREEN_DIM_MS = 30000;
+static bool tEmbedUserWasDown = false;
+static bool tEmbedEncoderWasDown = false;
+
+static void drawTEmbedStatus() {
+  if (!tEmbedScreenOn) return;
+  tEmbedDisplay.fillScreen(TFT_BLACK);
+  tEmbedDisplay.setCursor(4, 4);
+  tEmbedDisplay.setTextColor(TFT_GREEN, TFT_BLACK);
+  tEmbedDisplay.setTextSize(2);
+  tEmbedDisplay.printf("TrikiEmu v%s\n", TRIKIEMU_VERSION);
+  tEmbedDisplay.setTextColor(deviceConnected ? (streaming ? TFT_CYAN : TFT_YELLOW) :
+                             (appMode == MODE_ADV ? TFT_ORANGE : TFT_DARKGREY), TFT_BLACK);
+  tEmbedDisplay.printf("BLE: %s\n", deviceConnected ? (streaming ? "STREAM" : "connected") :
+                       (appMode == MODE_ADV ? "advertising" : "off"));
+  tEmbedDisplay.setTextColor(TFT_WHITE, TFT_BLACK);
+  tEmbedDisplay.printf("%s\n", DEVICE_NAME);
+  tEmbedDisplay.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  tEmbedDisplay.setTextSize(1);
+  tEmbedDisplay.printf("%s\n", macStr());
+  tEmbedDisplay.setTextColor(TFT_WHITE, TFT_BLACK);
+  tEmbedDisplay.setTextSize(2);
+  tEmbedDisplay.println("motion: USB");
+  tEmbedDisplay.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  tEmbedDisplay.setTextSize(1);
+  tEmbedDisplay.setCursor(4, tEmbedDisplay.height() - 24);
+  tEmbedDisplay.println("USER: BLE on/off");
+  tEmbedDisplay.println("ENC: wake display");
+}
+
+static void setTEmbedScreen(bool on) {
+  tEmbedScreenOn = on;
+  digitalWrite(T_EMBED_DISPLAY_BL, on ? HIGH : LOW);
+  if (on) drawTEmbedStatus();
+}
+#endif
+
 // Deklaracje wyprzedzajace
 static void setAdvertising(bool on);
 
@@ -163,8 +226,12 @@ static void drawStatus() {
   M5.Display.print("B (2s): uspij");
   M5.Display.setTextSize(2);
 }
-#else
+#elif !defined(HAS_T_EMBED_CC1101)
 static inline void drawStatus() {}  // brak ekranu na golym ESP32
+#endif
+
+#ifdef HAS_T_EMBED_CC1101
+static inline void drawStatus() { drawTEmbedStatus(); }
 #endif
 
 // ---------------------------------------------------------------------------
@@ -242,10 +309,13 @@ static void setupBle() {
   NimBLEDevice::init(DEVICE_NAME);
 
   // Adres BLE jak prawdziwy kapsel: RANDOM STATIC, BEZ prywatnosci (MAC jest wymagany).
-  // setOwnAddrType(RANDOM) w NimBLE-Arduino wlacza RPA (adres prywatny), wiec
-  // jawnie wylaczamy prywatnosc i ustawiamy nasz staly adres (BLE_ADDR_LE).
+  // Ustawiamy typ random, a nastepnie konkretny adres random static.
+  // Gdy dana wersja NimBLE wlacza host-based privacy, jawnie ja wylaczamy,
+  // aby zachowac staly adres wymagany przez protokol Triki.
   NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
-  ble_hs_pvcy_rpa_config(0); // 0 = wylacz RPA -> uzyj statycznego adresu random
+#ifdef TRIKI_HAS_NIMBLE_HOST_PRIVACY
+  ble_hs_pvcy_rpa_config(0);
+#endif
   int rc = ble_hs_id_set_rnd(BLE_ADDR_LE);
   Serial.printf("[TrikiEmu] adres random static rc=%d (%s)\n", rc, macStr());
 
@@ -415,8 +485,21 @@ void setup() {
   pinMode(redLedPin, OUTPUT);
   digitalWrite(redLedPin, LOW); // LED off (Plus2 GPIO19 aktywna stanem wysokim)
 #else
+#ifdef HAS_T_EMBED_CC1101
+  tEmbedDisplay.init();
+  tEmbedDisplay.setRotation(1);
+  pinMode(T_EMBED_DISPLAY_BL, OUTPUT);
+  setTEmbedScreen(true);
+  pinMode(T_EMBED_USER_KEY, INPUT_PULLUP);
+  pinMode(T_EMBED_ENCODER_KEY, INPUT_PULLUP);
+  tEmbedLastInteractMs = millis();
+  Serial.printf("[TrikiEmu] v%s boot (T-Embed-CC1101) display=%dx%d cpu=%dMHz\n",
+                TRIKIEMU_VERSION, tEmbedDisplay.width(), tEmbedDisplay.height(),
+                (int)getCpuFrequencyMhz());
+#else
   Serial.printf("[TrikiEmu] v%s boot (generic ESP32) cpu=%dMHz\n",
                 TRIKIEMU_VERSION, (int)getCpuFrequencyMhz());
+#endif
 #endif
 
   setupBle();
@@ -428,15 +511,46 @@ void setup() {
   Serial.println("[TrikiEmu] gotowe (IDLE). A wlacza BLE; z PC: BLE,1 / BLE,0.");
   drawStatus();
 #else
+#ifdef HAS_T_EMBED_CC1101
+  setAdvertising(false);
+  Serial.println("[TrikiEmu] gotowe (IDLE). USER wlacza BLE; z PC: BLE,1 / BLE,0.");
+  drawStatus();
+#else
   // Goly ESP32: brak przyciskow -> startujemy reklame od razu; PC wylacza przez BLE,0.
   setAdvertising(true);
   Serial.println("[TrikiEmu] gotowe (reklama ON). Z PC: BLE,0 wylacza, BLE,1 wlacza.");
+#endif
 #endif
 }
 
 void loop() {
 #ifdef HAS_M5
   M5.update();
+#endif
+
+#ifdef HAS_T_EMBED_CC1101
+  if (digitalRead(T_EMBED_USER_KEY) == LOW) {
+    if (!tEmbedUserWasDown) {
+      setAdvertising(appMode == MODE_IDLE);
+      tEmbedLastInteractMs = millis();
+      if (!tEmbedScreenOn) setTEmbedScreen(true);
+    }
+    tEmbedUserWasDown = true;
+  } else {
+    tEmbedUserWasDown = false;
+  }
+  if (digitalRead(T_EMBED_ENCODER_KEY) == LOW) {
+    if (!tEmbedEncoderWasDown) {
+      tEmbedLastInteractMs = millis();
+      if (!tEmbedScreenOn) setTEmbedScreen(true);
+    }
+    tEmbedEncoderWasDown = true;
+  } else {
+    tEmbedEncoderWasDown = false;
+  }
+  if (tEmbedScreenOn && !deviceConnected && millis() - tEmbedLastInteractMs > T_EMBED_SCREEN_DIM_MS) {
+    setTEmbedScreen(false);
+  }
 #endif
   pollSerialMotion();
 

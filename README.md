@@ -53,7 +53,7 @@ wbudowanego IMU jako źródła ruchu.
 ## Co jest potrzebne
 
 **Sprzęt:**
-- Dowolna płytka **ESP32** (testowane na **M5StickC Plus2** / ESP32-PICO-V3-02)
+- Dowolna płytka **ESP32** (testowane na **M5StickC Plus2** / ESP32-PICO-V3-02 oraz **LilyGo T-Embed-CC1101** / ESP32-S3)
 - Kabel USB
 - Komputer z Bluetooth
 - Telefon z Żappką
@@ -112,6 +112,21 @@ Rdzeń (BLE/NUS/strumień/serial) działa na **każdym ESP32**; funkcje M5StickC
 przyciski, IMU, bateria, deep sleep) są opcjonalne. Robione i przetestowane **na M5StickC
 Plus2**. Szczegóły (env-y PlatformIO, co działa na gołym ESP32 vs M5, flaga `-D HAS_M5`,
 sterowanie przyciskami/ekranem): [firmware/README.md](firmware/README.md).
+
+### LilyGo T-Embed-CC1101
+
+Firmware ma osobne środowisko `t_embed_cc1101`. Płytka używa wbudowanego ekranu
+ST7789 170×320 i przycisku użytkownika GPIO6. Nie ma IMU, więc ruch podawaj przez
+USB-serial tak samo jak na gołym ESP32:
+
+```bash
+cd firmware
+pio run -e t_embed_cc1101
+pio run -e t_embed_cc1101 -t upload
+```
+
+Przycisk USER włącza/wyłącza reklamowanie BLE; ekran pokazuje stan emulatora, a dane
+ruchu pochodzą z istniejącego protokołu `M,gx,gy,gz,ax,ay,az`.
 
 ## Warianty rozważane
 
