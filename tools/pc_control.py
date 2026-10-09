@@ -26,7 +26,7 @@ ALIASES = {
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", default=None, help="np. COM4; domyslnie autodetekcja")
+    ap.add_argument("--port", default=None, help="np. COM4 / /dev/ttyUSB0; domyslnie autodetekcja")
     ap.add_argument("cmd", help="ble-on | ble-off | rest | raw")
     ap.add_argument("arg", nargs="?", help="tresc dla 'raw'")
     args = ap.parse_args()

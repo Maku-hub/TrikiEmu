@@ -41,6 +41,8 @@ jobs:
         run: pip install -r tools/requirements.txt ruff
       - name: Compile-check (py_compile)
         run: python -m py_compile tools/*.py
+      - name: Smoke-test konsoli (klawiatura w pty, Linux)
+        run: python tests/console_pty_smoke.py
       - name: Lint (ruff, informacyjnie)
         run: ruff check tools/
         continue-on-error: true

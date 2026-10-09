@@ -5,6 +5,16 @@ Wszystkie istotne zmiany w projekcie są dokumentowane w tym pliku.
 Format wzorowany na [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/),
 projekt stosuje [Semantic Versioning](https://semver.org/lang/pl/).
 
+## [Unreleased]
+
+### Zmienione
+
+- Interaktywne narzędzia (`pc_keyboard.py`, `pc_game2_drive.py`) działają teraz na
+  **Windows i Linuksie** — wspólny moduł `tools/_console.py` (odczyt klawiszy:
+  `msvcrt` / `termios`; pozycja myszy: WinAPI / X11).
+- README: `pc_game2_drive.py` w tabeli narzędzi, wskazówki dla Linuksa (port, `dialout`, Wayland).
+- CI: smoke-test odczytu klawiatury w pseudo-terminalu na Linuksie.
+
 ## [1.0.0] - 2026-06-18
 
 Pierwsze stabilne wydanie. Interoperacyjność z aplikacją Żappka **potwierdzona na

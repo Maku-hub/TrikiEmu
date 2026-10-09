@@ -57,7 +57,7 @@ def frames_from_keyframes(rows, rate):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("file")
-    ap.add_argument("--port", default=None, help="np. COM4; domyslnie autodetekcja")
+    ap.add_argument("--port", default=None, help="np. COM4 / /dev/ttyUSB0; domyslnie autodetekcja")
     ap.add_argument("--rate", type=float, default=50.0, help="Hz wysylki")
     ap.add_argument("--loop", action="store_true")
     args = ap.parse_args()

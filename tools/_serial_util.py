@@ -26,7 +26,7 @@ def _candidates():
 
 
 def autodetect_port():
-    """Zwraca nazwe portu (np. 'COM4') lub rzuca RuntimeError z podpowiedzia."""
+    """Zwraca nazwe portu (np. 'COM4' / '/dev/ttyUSB0') lub rzuca RuntimeError z podpowiedzia."""
     known, other = _candidates()
     if len(known) == 1:
         return known[0].device

@@ -87,6 +87,7 @@ mostka ESP32); `--port` podajesz tylko przy kilku płytkach.
 |---|---|
 | `pc_control.py` | jednorazowe komendy: `ble-on` / `ble-off` / `rest` / `raw "..."` |
 | `pc_keyboard.py` | **sterowanie na żywo z klawiatury**: obrót/przechył (gry lewo/prawo) + `f`=flap/„szarpnięcie" (gry typu FlappyBird) |
+| `pc_game2_drive.py` | gra „wąż z kulek": skręt (gyro Z) z **ruchu myszy** albo `a/d`/strzałek (`--input keys`) |
 | `pc_motion_file.py` | **odtwarzanie sekwencji ruchu z pliku CSV** |
 | `pc_motion_feed.py` | generator wzorca (`--pattern spin\|tilt\|rest`) |
 | `pc_replay_capture.py` | **odtwarzanie realnej nagranej sesji** (z btsnoop, reużywa parsera) |
@@ -103,6 +104,13 @@ mostka ESP32); `--port` podajesz tylko przy kilku płytkach.
 
 **Plik** (`python tools/pc_motion_file.py tools/motion_examples/demo.csv`): CSV 7-kolumnowy
 `t,gx,gy,gz,ax,ay,az` = keyframe'y interpolowane przy `--rate`; 6-kolumnowy = surowe próbki.
+
+**Windows i Linux:** wszystkie narzędzia działają na obu systemach (interaktywne potrzebują
+prawdziwego terminala). Na Linuksie:
+- port to zwykle `/dev/ttyUSB0` / `/dev/ttyACM0`; brak dostępu → `sudo usermod -aG dialout $USER`
+  (i ponowne zalogowanie);
+- sterowanie myszą w `pc_game2_drive.py` wymaga sesji **X11/XWayland** (`libX11`); w czystym
+  Wayland pozycja kursora jest niedostępna — użyj `--input keys`.
 
 Protokół serial (gdybyś pisał własne narzędzie) jest opisany w [firmware/README.md](firmware/README.md).
 

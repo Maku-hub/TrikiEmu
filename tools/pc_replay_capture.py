@@ -31,7 +31,7 @@ def load_frames(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--file", default="captures/btsnoop_hci.log")
-    ap.add_argument("--port", default=None, help="np. COM4; domyslnie autodetekcja")
+    ap.add_argument("--port", default=None, help="np. COM4 / /dev/ttyUSB0; domyslnie autodetekcja")
     ap.add_argument("--rate", type=float, default=100.0, help="Hz wysylki")
     ap.add_argument("--skip", type=int, default=20, help="pomin N pierwszych ramek (szum startu)")
     ap.add_argument("--loop", action="store_true")

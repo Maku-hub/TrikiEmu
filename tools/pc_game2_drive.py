@@ -13,6 +13,8 @@ Model wejscia:
 
 Gz dochodzi plynnie (low-pass). Strona zalezna od gry - jesli lustrzane, dodaj --invert.
 Klawisze zawsze: spacja=wyzeruj, b/n=BLE on/off, x=wyjscie.
+Dziala na Windows i Linuksie; mysz na Linuksie wymaga X11/XWayland (w czystym
+Wayland uzyj --input keys).
 ZAKRES: tryb nierankingowy (zob. README).
 
 Uzycie:
@@ -20,31 +22,16 @@ Uzycie:
     python tools/pc_game2_drive.py --input keys
 """
 import argparse
-import ctypes
 import math
 import sys
 import time
 
+from _console import KeyReader, enable_ansi, get_cursor_x
 from _serial_util import open_serial
-
-try:
-    import msvcrt
-except ImportError:
-    msvcrt = None
 
 RATE = 100.0
 DT = 1.0 / RATE
 NLINES = 4
-
-
-class _POINT(ctypes.Structure):
-    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-
-
-def get_cursor_x():
-    p = _POINT()
-    ctypes.windll.user32.GetCursorPos(ctypes.byref(p))
-    return p.x
 
 
 def clamp(v, lo, hi):
@@ -63,20 +50,15 @@ def main():
     ap.add_argument("--invert", action="store_true", help="odwroc strone sterowania")
     ap.add_argument("--ble-on", action="store_true")
     args = ap.parse_args()
-    if msvcrt is None:
-        raise SystemExit("Wymaga Windows (msvcrt).")
-
-    try:
-        ctypes.windll.kernel32.SetConsoleMode(ctypes.windll.kernel32.GetStdHandle(-11), 7)
-    except Exception:
-        pass
+    enable_ansi()
+    # mysz sprawdzamy PRZED otwarciem portu - czytelny blad np. w czystym Wayland
+    last_x = get_cursor_x() if args.input == "mouse" else 0
 
     s = open_serial(args.port)
     if args.ble_on:
         s.write(b"BLE,1\n"); s.flush()
 
     sign = -1.0 if args.invert else +1.0       # domyslnie: mysz w lewo -> waz w lewo
-    last_x = get_cursor_x()
     vel = 0.0
     actual_rate = 0.0                          # gz [deg/s], dochodzi plynnie
     key_dir = 0.0
@@ -105,52 +87,51 @@ def main():
 
     print("=== TrikiEmu: sterowanie gry 2 (obrot/gyro, model ruchu myszy) ===")
     t0 = time.perf_counter(); n = 0
-    try:
-        while True:
-            now = time.perf_counter() - t0
-            while msvcrt.kbhit():
-                ch = msvcrt.getch()
-                if ch in (b"\x00", b"\xe0"):     # klawisze specjalne (strzalki)
-                    k2 = msvcrt.getch() if msvcrt.kbhit() else b""
-                    if k2 == b"K": key_dir = -1.0; last_key_t = now   # lewo
-                    elif k2 == b"M": key_dir = +1.0; last_key_t = now  # prawo
-                    continue
-                k = ch.decode("ascii", "ignore").lower()
-                if k == "x": raise KeyboardInterrupt
-                elif k == " ": key_dir = 0.0; actual_rate = 0.0
-                elif k == "b": s.write(b"BLE,1\n"); ble_state = "ON"
-                elif k == "n": s.write(b"BLE,0\n"); ble_state = "OFF"
-                elif args.input == "keys":
-                    if k == "a": key_dir = -1.0; last_key_t = now
-                    elif k == "d": key_dir = +1.0; last_key_t = now
+    with KeyReader() as kr:
+        try:
+            while True:
+                now = time.perf_counter() - t0
+                for k in kr.read():
+                    if len(k) != 1:                  # klawisze specjalne (strzalki)
+                        if k == "LEFT": key_dir = -1.0; last_key_t = now
+                        elif k == "RIGHT": key_dir = +1.0; last_key_t = now
+                        continue
+                    k = k.lower()
+                    if k == "x": raise KeyboardInterrupt
+                    elif k == " ": key_dir = 0.0; actual_rate = 0.0
+                    elif k == "b": s.write(b"BLE,1\n"); ble_state = "ON"
+                    elif k == "n": s.write(b"BLE,0\n"); ble_state = "OFF"
+                    elif args.input == "keys":
+                        if k == "a": key_dir = -1.0; last_key_t = now
+                        elif k == "d": key_dir = +1.0; last_key_t = now
 
-            if args.input == "mouse":
-                cur = get_cursor_x()
-                vel = (cur - last_x) / DT                    # px/s (lewo = ujemne)
-                last_x = cur
-                v = 0.0 if abs(vel) < args.mouse_deadzone else vel
-                target = clamp(sign * (-v) * args.mouse_gain, -args.max_rate, args.max_rate)
-            else:
-                if now - last_key_t > args.release_ms / 1000.0:
-                    key_dir = 0.0
-                target = sign * key_dir * args.max_rate
+                if args.input == "mouse":
+                    cur = get_cursor_x()
+                    vel = (cur - last_x) / DT                    # px/s (lewo = ujemne)
+                    last_x = cur
+                    v = 0.0 if abs(vel) < args.mouse_deadzone else vel
+                    target = clamp(sign * (-v) * args.mouse_gain, -args.max_rate, args.max_rate)
+                else:
+                    if now - last_key_t > args.release_ms / 1000.0:
+                        key_dir = 0.0
+                    target = sign * key_dir * args.max_rate
 
-            actual_rate += (target - actual_rate) * alpha     # plynne dochodzenie
+                actual_rate += (target - actual_rate) * alpha     # plynne dochodzenie
 
-            # accel plasko, sterujemy gyro Z (yaw) - jak q/e w pc_keyboard
-            s.write(f"M,0.00,0.00,{actual_rate:.2f},0.000,0.000,1.000\n".encode("ascii"))
+                # accel plasko, sterujemy gyro Z (yaw) - jak q/e w pc_keyboard
+                s.write(f"M,0.00,0.00,{actual_rate:.2f},0.000,0.000,1.000\n".encode("ascii"))
 
-            n += 1
-            if n % 6 == 0:
-                render(target)
+                n += 1
+                if n % 6 == 0:
+                    render(target)
 
-            sleep = (t0 + n * DT) - time.perf_counter()
-            if sleep > 0:
-                time.sleep(sleep)
-    except KeyboardInterrupt:
-        sys.stdout.write("\nKoniec.\n")
-    finally:
-        s.write(b"R\n"); s.flush(); s.close()
+                sleep = (t0 + n * DT) - time.perf_counter()
+                if sleep > 0:
+                    time.sleep(sleep)
+        except KeyboardInterrupt:
+            sys.stdout.write("\nKoniec.\n")
+        finally:
+            s.write(b"R\n"); s.flush(); s.close()
 
 
 if __name__ == "__main__":
