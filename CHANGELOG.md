@@ -23,6 +23,11 @@ projekt stosuje [Semantic Versioning](https://semver.org/lang/pl/).
 - Firmware: stan strumienia (START/STOP, bufor cyklu, wysyłka na TX) obsługiwany
   wyłącznie w `loop()` — callbacki BLE zgłaszają komendę, co usuwa wyścig między
   rdzeniami; powtórny START w trakcie strumienia jest ignorowany (#4, #5).
+- Firmware: wysyłka strumienia sprawdza wynik każdej notyfikacji — przy braku buforów
+  BLE pomijany jest cały cykl 3 ramek (bez rozrywania ramek), niedokończony cykl jest
+  dosyłany, gotowość `21` ponawiana; liczba pominiętych cykli raportowana w logu serial (#7).
+- `firmware/README.md`: dokładniejszy opis strumienia TX (wiadomości po nagłówkach cięte
+  co 20 B; 20/20/2 to skutek długości ramki) i nowe pułapki NimBLE.
 
 ## [1.0.0] - 2026-06-18
 

@@ -84,6 +84,14 @@ static int     streamAccLen = 0;
 static uint32_t lastFrameUs  = 0;
 static const uint32_t FRAME_PERIOD_US = 10000; // 100 Hz
 
+// Kolejka wysylki na TX (tez tylko loop()): jedna cala wiadomosc/cykl ciety po 20 B.
+static const int TX_CHUNK = 20;
+static uint8_t  txPend[42];
+static int      txPendLen = 0;      // dlugosc wiadomosci w kolejce (0 = pusto)
+static int      txPendOff = 0;      // ile bajtow juz wyslano
+static uint32_t txDropped = 0;      // pominiete cale wiadomosci/cykle (brak buforow)
+static uint32_t txDroppedLogged = 0;
+
 // Tryb reklamy. MODE_IDLE: nie reklamuje sie. MODE_ADV: reklama (parowanie) wlaczona.
 enum AppMode { MODE_IDLE, MODE_ADV };
 static AppMode appMode = MODE_IDLE;
@@ -204,13 +212,53 @@ class ServerCB : public NimBLEServerCallbacks {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Wysylka na TX. NimBLECharacteristic::notify() w NimBLE-Arduino 1.4.x zwraca void i
+// ignoruje blad hosta, wiec zgubiona notyfikacja bylaby niewidoczna, a urwany kawalek
+// rozrywa ramke w strumieniu (brak licznika/CRC). Dlatego wysylamy sami i sprawdzamy rc:
+//  - nie wyszedl PIERWSZY kawalek -> pomijamy cala wiadomosc/cykl (strumien zostaje spojny),
+//  - nie wyszedl kolejny -> ponawiamy ten sam kawalek w nastepnych obiegach loop().
+static bool sendChunk(const uint8_t* p, int n) {
+  // (bez getSubscribedCount(): wektor subskrypcji zmienia zadanie nimble_host; START i tak
+  //  przychodzi dopiero po wlaczeniu notyfikacji przez centrala)
+  if (!txChar || curConnHandle == 0xFFFF) return false;
+  os_mbuf* om = ble_hs_mbuf_from_flat(p, n);
+  if (!om) return false;                                              // brak buforow
+  return ble_gattc_notify_custom(curConnHandle, txChar->getHandle(), om) == 0; // om zuzyty zawsze
+}
+
+// Dosyla reszte wiadomosci z kolejki. true = kolejka pusta.
+static bool pumpTx() {
+  while (txPendOff < txPendLen) {
+    int n = min(TX_CHUNK, txPendLen - txPendOff);
+    if (!sendChunk(txPend + txPendOff, n)) return false;
+    txPendOff += n;
+  }
+  txPendLen = txPendOff = 0;
+  return true;
+}
+
+// Wstawia cala wiadomosc do kolejki i probuje wyslac. Gdy kolejka zajeta albo nie
+// wyszedl zaden bajt -> wiadomosc pominieta w calosci (liczona w txDropped).
+// mustSend (gotowosc 21): nie pomijamy, tylko ponawiamy — apka na nia czeka.
+static void queueTx(const uint8_t* p, int n, bool mustSend = false) {
+  if (txPendLen > 0) { txDropped++; return; }
+  memcpy(txPend, p, n);
+  txPendLen = n; txPendOff = 0;
+  if (!pumpTx() && txPendOff == 0 && !mustSend) { txPendLen = 0; txDropped++; }
+}
+
+static void clearTx() { txPendLen = txPendOff = 0; }
+
 // Wolane tylko z loop(). Gotowosc idzie jako osobna, cala wiadomosc na granicy
 // cyklu (streamAccLen == 0), wiec nie rozrywa ramek w strumieniu.
 static void startStreaming() {
   streamAccLen = 0;
+  clearTx();
+  txDropped = txDroppedLogged = 0;
   lastFrameUs = micros();
   const uint8_t ready[5] = {0x21, 0x00, 0x00, 0x00, 0x00}; // ramka "ready" jak kapsel
-  if (txChar) txChar->notify(ready, sizeof(ready));
+  queueTx(ready, sizeof(ready), true);
   streaming = true;
   Serial.println("[TrikiEmu] START -> strumien ON");
   drawStatus();
@@ -219,7 +267,9 @@ static void startStreaming() {
 static void stopStreaming() {
   streaming = false;
   streamAccLen = 0;
-  Serial.println("[TrikiEmu] STOP -> strumien OFF");
+  clearTx();
+  Serial.printf("[TrikiEmu] STOP -> strumien OFF (pominiete cykle: %u)\n", (unsigned)txDropped);
+  txDroppedLogged = txDropped;
   drawStatus();
 }
 
@@ -341,6 +391,7 @@ static void setAdvertising(bool on) {
     appMode = MODE_IDLE;
     streaming = false;
     streamAccLen = 0;
+    clearTx();
     NimBLEDevice::stopAdvertising();
     if (deviceConnected && curConnHandle != 0xFFFF && server) {
       server->disconnect(curConnHandle);
@@ -374,14 +425,6 @@ static void pollSerialMotion() {
       lineBuf[lineLen++] = c;
     }
   }
-}
-
-// Wysyla skumulowane 42 B jako notyfikacje w cyklu 20/20/2 (jak prawdziwy kapsel).
-static void flushStream() {
-  if (!txChar || !deviceConnected) return;
-  txChar->notify(streamAcc,      20);
-  txChar->notify(streamAcc + 20, 20);
-  txChar->notify(streamAcc + 40, 2);
 }
 
 #ifdef HAS_M5
@@ -486,6 +529,7 @@ void loop() {
 #endif
 
   if (streaming && deviceConnected) {
+    if (txPendLen > 0) pumpTx();   // dokoncz przerwany cykl, zanim pojdzie nastepny
     uint32_t now = micros();
     if ((int32_t)(now - lastFrameUs) >= (int32_t)FRAME_PERIOD_US) {
       lastFrameUs += FRAME_PERIOD_US;
@@ -509,10 +553,19 @@ void loop() {
       streamAccLen += 14;
 
       if (streamAccLen >= 42) {
-        flushStream();
+        queueTx(streamAcc, 42);    // na kablu: 20/20/2 B
         streamAccLen = 0;
       }
     }
+  }
+
+  // Utrata danych ma byc widoczna: raport pominietych cykli (najwyzej co ~1 s).
+  static uint32_t lastDropLog = 0;
+  if (txDropped != txDroppedLogged && millis() - lastDropLog > 1000) {
+    lastDropLog = millis();
+    Serial.printf("[TrikiEmu] UWAGA: pominiete cykle strumienia (brak buforow BLE): %u\n",
+                  (unsigned)txDropped);
+    txDroppedLogged = txDropped;
   }
 
   // Aktualizacja poziomu baterii co ~5 s.

@@ -95,9 +95,18 @@ offset 0    1     2..3   4..5   6..7   8..9   10..11 12..13
 ### Charakterystyka strumienia (odtworzyć wiernie)
 
 - ~**100 Hz** ramek (zmierzono ~94–104 Hz).
-- Strumień to **ciągły ciąg bajtów** pocięty na notyfikacje w powtarzalnym cyklu
-  **20 / 20 / 2 B = 42 B = dokładnie 3 ramki**. **Ramki przechodzą przez granice
-  notyfikacji** — nie wysyłaj „1 ramka = 1 notyfikacja".
+- TX to **ciągły strumień wiadomości** rozpoznawanych po pierwszym bajcie (typie):
+  `22` = ramka IMU (14 B), `21` = gotowość/potwierdzenie (5 B), `8a`/`89` = wymiana
+  uwierzytelniająca (zob. główne README). Strumień jest **cięty na notyfikacje po 20 B,
+  niezależnie od granic wiadomości** — ramki przechodzą przez granice notyfikacji, a
+  kapsel wplata inne wiadomości (np. `89 …`) w środek strumienia IMU. Aplikacja skleja
+  więc notyfikacje i parsuje po nagłówkach; nie wysyłaj „1 ramka = 1 notyfikacja".
+- Sam strumień IMU daje stąd powtarzalny cykl **20 / 20 / 2 B = 42 B = 3 ramki** —
+  to skutek długości ramki, nie osobna reguła protokołu.
+- Brak licznika/CRC: **zgubiony kawałek rozrywa ramkę** i rozsynchronizowuje parser.
+  Emulator sprawdza wynik każdej wysyłki i w razie braku buforów BLE pomija **cały
+  cykl** 3 ramek (strumień zostaje spójny), a niedokończony cykl dosyła; pominięcia
+  raportuje w logu serial (`pominiete cykle`).
 - |accel| w spoczynku ≈ 1 g (kontrola skali).
 
 ---
@@ -113,6 +122,11 @@ offset 0    1     2..3   4..5   6..7   8..9   10..11 12..13
 - **Płynne ~100 Hz:** poproś o krótki interwał połączenia w `onConnect`
   (`updateConnParams(handle, 6, 12, 0, 200)` = 7.5–15 ms).
 - **Notyfikacje 20/20/2:** akumuluj 42 B (3 ramki) i wyślij 3 notyfikacje (20, 20, 2 B).
+- **`notify()` w NimBLE-Arduino 1.4.x zwraca `void`** i ignoruje błąd hosta (np. brak
+  buforów) — utrata jest niewidoczna. Do strumienia używamy `ble_gattc_notify_custom()`
+  i sprawdzamy kod powrotu.
+- **Callbacki NimBLE działają w osobnym zadaniu (inny rdzeń niż `loop()`)** — nie ruszaj
+  z nich stanu strumienia ani ekranu; tylko zgłaszaj komendę/flagę, resztę robi `loop()`.
 - **M5StickC Plus2 / flash:** `board = m5stick-c` (4 MB; górne 4 MB chipa nieużywane).
   **Nie** wymuszaj 8 MB flash/partycji — niezgodność z 4 MB bootloaderem daje pętlę
   resetów (SW_RESET zaraz po `entry`, bez logów aplikacji). M5Unified wykrywa Plus2 w runtime.
