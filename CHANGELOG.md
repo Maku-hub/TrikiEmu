@@ -15,6 +15,11 @@ projekt stosuje [Semantic Versioning](https://semver.org/lang/pl/).
 - README: `pc_game2_drive.py` w tabeli narzędzi, wskazówki dla Linuksa (port, `dialout`, Wayland).
 - CI: smoke-test odczytu klawiatury w pseudo-terminalu na Linuksie.
 
+### Poprawione
+
+- Firmware: ekran M5 rysowany wyłącznie z `loop()` — callbacki BLE (inny rdzeń) tylko
+  zgłaszają potrzebę przerysowania (#6).
+
 ## [1.0.0] - 2026-06-18
 
 Pierwsze stabilne wydanie. Interoperacyjność z aplikacją Żappka **potwierdzona na

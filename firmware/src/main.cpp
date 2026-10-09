@@ -167,6 +167,12 @@ static void drawStatus() {
 static inline void drawStatus() {}  // brak ekranu na golym ESP32
 #endif
 
+// Callbacki NimBLE dzialaja w zadaniu nimble_host (inny rdzen niz loop()), a ekran
+// (SPI) nie jest reentrantny -> z callbackow tylko zglaszamy potrzebe przerysowania,
+// rysuje wylacznie loop().
+static volatile bool gRedraw = false;
+static inline void requestRedraw() { gRedraw = true; }
+
 // ---------------------------------------------------------------------------
 class ServerCB : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, ble_gap_conn_desc* desc) override {
@@ -177,7 +183,7 @@ class ServerCB : public NimBLEServerCallbacks {
 #ifdef HAS_M5
     lastInteractMs = millis();
 #endif
-    drawStatus();
+    requestRedraw();
   }
   void onDisconnect(NimBLEServer* s) override {
     deviceConnected = false;
@@ -191,7 +197,7 @@ class ServerCB : public NimBLEServerCallbacks {
     } else {
       Serial.println("[TrikiEmu] ROZLACZONY");
     }
-    drawStatus();
+    requestRedraw();
   }
 };
 
@@ -202,13 +208,13 @@ static void startStreaming() {
   if (txChar) { txChar->setValue(ready, sizeof(ready)); txChar->notify(); }
   streaming = true;
   Serial.println("[TrikiEmu] START -> strumien ON");
-  drawStatus();
+  requestRedraw();
 }
 
 static void stopStreaming() {
   streaming = false;
   streamAccLen = 0;
-  drawStatus();
+  requestRedraw();
 }
 
 class RxCB : public NimBLECharacteristicCallbacks {
@@ -439,6 +445,8 @@ void loop() {
   M5.update();
 #endif
   pollSerialMotion();
+
+  if (gRedraw) { gRedraw = false; drawStatus(); }   // zgloszone z callbackow BLE
 
 #ifdef HAS_M5
   // --- Przyciski ---
