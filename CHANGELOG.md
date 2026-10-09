@@ -13,12 +13,16 @@ projekt stosuje [Semantic Versioning](https://semver.org/lang/pl/).
   **Windows i Linuksie** — wspólny moduł `tools/_console.py` (odczyt klawiszy:
   `msvcrt` / `termios`; pozycja myszy: WinAPI / X11).
 - README: `pc_game2_drive.py` w tabeli narzędzi, wskazówki dla Linuksa (port, `dialout`, Wayland).
+- README: opis sterowania ruchem samego M5StickC Plus2 (wbudowany IMU, bez PC).
 - CI: smoke-test odczytu klawiatury w pseudo-terminalu na Linuksie.
 
 ### Poprawione
 
 - Firmware: ekran M5 rysowany wyłącznie z `loop()` — callbacki BLE (inny rdzeń) tylko
   zgłaszają potrzebę przerysowania (#6).
+- Firmware: stan strumienia (START/STOP, bufor cyklu, wysyłka na TX) obsługiwany
+  wyłącznie w `loop()` — callbacki BLE zgłaszają komendę, co usuwa wyścig między
+  rdzeniami; powtórny START w trakcie strumienia jest ignorowany (#4, #5).
 
 ## [1.0.0] - 2026-06-18
 

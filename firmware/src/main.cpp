@@ -72,9 +72,13 @@ static NimBLECharacteristic* batChar = nullptr;
 static NimBLEServer*         server  = nullptr;
 
 static volatile bool deviceConnected = false;
-static volatile bool streaming       = false;
 static uint16_t curConnHandle = 0xFFFF; // uchwyt biezacego polaczenia (do rozlaczenia)
 
+// Stan strumienia nalezy WYLACZNIE do loop(). Callbacki NimBLE (zadanie nimble_host,
+// inny rdzen) tylko zglaszaja komende START/STOP w gStreamCmd; wygrywa ostatnia.
+enum StreamCmd : uint8_t { STREAM_CMD_NONE, STREAM_CMD_START, STREAM_CMD_STOP };
+static volatile uint8_t gStreamCmd = STREAM_CMD_NONE;
+static bool    streaming    = false;
 static uint8_t streamAcc[42];   // bufor 3 ramek
 static int     streamAccLen = 0;
 static uint32_t lastFrameUs  = 0;
@@ -187,8 +191,7 @@ class ServerCB : public NimBLEServerCallbacks {
   }
   void onDisconnect(NimBLEServer* s) override {
     deviceConnected = false;
-    streaming = false;
-    streamAccLen = 0;
+    gStreamCmd = STREAM_CMD_STOP;   // strumien zatrzyma loop()
     curConnHandle = 0xFFFF;
     if (appMode == MODE_ADV) {
       Serial.println("[TrikiEmu] ROZLACZONY -> wznawiam reklame");
@@ -201,20 +204,31 @@ class ServerCB : public NimBLEServerCallbacks {
   }
 };
 
+// Wolane tylko z loop(). Gotowosc idzie jako osobna, cala wiadomosc na granicy
+// cyklu (streamAccLen == 0), wiec nie rozrywa ramek w strumieniu.
 static void startStreaming() {
   streamAccLen = 0;
   lastFrameUs = micros();
   const uint8_t ready[5] = {0x21, 0x00, 0x00, 0x00, 0x00}; // ramka "ready" jak kapsel
-  if (txChar) { txChar->setValue(ready, sizeof(ready)); txChar->notify(); }
+  if (txChar) txChar->notify(ready, sizeof(ready));
   streaming = true;
   Serial.println("[TrikiEmu] START -> strumien ON");
-  requestRedraw();
+  drawStatus();
 }
 
 static void stopStreaming() {
   streaming = false;
   streamAccLen = 0;
-  requestRedraw();
+  Serial.println("[TrikiEmu] STOP -> strumien OFF");
+  drawStatus();
+}
+
+// Odbiera komende zgloszona przez callback (atomowo: odczyt + wyczyszczenie).
+// Powtorny START w trakcie strumienia jest ignorowany.
+static void handleStreamCmd() {
+  uint8_t cmd = __atomic_exchange_n(&gStreamCmd, (uint8_t)STREAM_CMD_NONE, __ATOMIC_ACQ_REL);
+  if (cmd == STREAM_CMD_START && !streaming && deviceConnected) startStreaming();
+  else if (cmd == STREAM_CMD_STOP && streaming) stopStreaming();
 }
 
 class RxCB : public NimBLECharacteristicCallbacks {
@@ -223,9 +237,9 @@ class RxCB : public NimBLECharacteristicCallbacks {
     if (v.size() < 2) return;
     const uint8_t b0 = (uint8_t)v[0], b1 = (uint8_t)v[1];
     if (b0 == CMD_START_PREFIX[0] && b1 == CMD_START_PREFIX[1]) {
-      startStreaming();
+      gStreamCmd = STREAM_CMD_START;   // obsluzy loop()
     } else if (b0 == CMD_STOP_PREFIX[0] && b1 == CMD_STOP_PREFIX[1]) {
-      stopStreaming();
+      gStreamCmd = STREAM_CMD_STOP;
     }
   }
 };
@@ -365,9 +379,9 @@ static void pollSerialMotion() {
 // Wysyla skumulowane 42 B jako notyfikacje w cyklu 20/20/2 (jak prawdziwy kapsel).
 static void flushStream() {
   if (!txChar || !deviceConnected) return;
-  txChar->setValue(streamAcc,      20); txChar->notify();
-  txChar->setValue(streamAcc + 20, 20); txChar->notify();
-  txChar->setValue(streamAcc + 40, 2);  txChar->notify();
+  txChar->notify(streamAcc,      20);
+  txChar->notify(streamAcc + 20, 20);
+  txChar->notify(streamAcc + 40, 2);
 }
 
 #ifdef HAS_M5
@@ -446,6 +460,7 @@ void loop() {
 #endif
   pollSerialMotion();
 
+  handleStreamCmd();
   if (gRedraw) { gRedraw = false; drawStatus(); }   // zgloszone z callbackow BLE
 
 #ifdef HAS_M5

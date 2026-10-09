@@ -114,6 +114,18 @@ prawdziwego terminala). Na Linuksie:
 
 Protokół serial (gdybyś pisał własne narzędzie) jest opisany w [firmware/README.md](firmware/README.md).
 
+## Sterowanie ruchem samego M5StickC Plus2 (bez PC)
+
+M5StickC Plus2 ma wbudowany czujnik ruchu (IMU MPU6886: żyroskop + akcelerometr), więc
+może działać jak kapsel — **ruszasz płytką, a gra reaguje**. Komputer nie jest potrzebny
+(płytka ma własną baterię): włącz reklamę przyciskiem **A** i połącz Żappkę.
+
+- IMU jest **domyślnym źródłem ruchu**. Gdy PC wyśle ruch (`M,...`), przejmuje sterowanie
+  aż do komendy `R` — narzędzia z `tools/` wysyłają ją same przy wyjściu.
+- Odczyty IMU idą do gry bez przemapowania osi, a płytka ma inny kształt i ułożenie
+  czujnika niż kapsel — kierunki ruchu mogą się różnić od prawdziwego Triki.
+- Na gołym ESP32 (bez IMU) domyślnie nadawany jest spoczynek; ruch tylko z PC.
+
 ## Przenośność (dowolny ESP32)
 
 Rdzeń (BLE/NUS/strumień/serial) działa na **każdym ESP32**; funkcje M5StickC Plus2 (ekran,
