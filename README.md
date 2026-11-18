@@ -71,8 +71,9 @@ W katalogu `firmware/` (pełny opis: [firmware/README.md](firmware/README.md)).
 
 Żappka rozpoznaje zapamiętany kapsel po **adresie MAC** i emulator musi go **odtworzyć** —
 emulator z innym MAC dostaje „nie znaleziono triki". **Adres MAC jest specyficzny dla
-egzemplarza**, więc dla własnego kapsla musisz wpisać jego adres — jak go odczytać i gdzie
-ustawić (`BLE_ADDR_LE` w firmware) opisuje [firmware/README.md](firmware/README.md).
+egzemplarza**, więc dla własnego kapsla trzeba ustawić jego adres — bez przeflashowania,
+jedną komendą z PC (`python tools/pc_control.py set-mac XX:XX:XX:XX:XX:XX`, zapis w pamięci
+płytki). Jak odczytać adres kapsla: [firmware/README.md](firmware/README.md#ustawienie-adresu-mac).
 
 Pełny kontrakt tożsamości, który emulator odtwarza (reklama, profil GATT, manufacturer data,
 service UUID, firmware/bateria, NUS), jest w jednym miejscu:
@@ -85,7 +86,7 @@ mostka ESP32); `--port` podajesz tylko przy kilku płytkach.
 
 | Narzędzie | Do czego |
 |---|---|
-| `pc_control.py` | jednorazowe komendy: `ble-on` / `ble-off` / `rest` / `raw "..."` |
+| `pc_control.py` | jednorazowe komendy: `ble-on` / `ble-off` / `rest` / `raw "..."` / `set-mac` / `show-mac` |
 | `pc_keyboard.py` | **sterowanie na żywo z klawiatury**: obrót/przechył (gry lewo/prawo) + `f`=flap/„szarpnięcie" (gry typu FlappyBird) |
 | `pc_game2_drive.py` | gra „wąż z kulek": skręt (gyro Z) z **ruchu myszy** albo `a/d`/strzałek (`--input keys`) |
 | `pc_motion_file.py` | **odtwarzanie sekwencji ruchu z pliku CSV** |

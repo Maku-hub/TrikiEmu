@@ -19,14 +19,15 @@ M5StickC Plus2 (ekran/przyciski/IMU/bateria) to **opcja** włączana flagą `-D 
 
 To jest komplet tego, co emulator odtwarza, żeby Żappka uznała go za prawdziwy kapsel.
 **Adres MAC musi pochodzić z prawdziwego kapsla** (Żappka łączy po MAC; przykładowy adres
-nie działa — sprawdzone). Numer (Device ID) i nazwa nie są krytyczne. Ustawiasz je w
-[src/main.cpp](src/main.cpp) (`BLE_ADDR_LE` — bajty LSB-first — oraz `DEVICE_NAME`).
+nie działa — sprawdzone). Ustawiasz go **z PC, bez przeflashowania** — zob.
+[Ustawienie adresu MAC](#ustawienie-adresu-mac). Numer (Device ID) i nazwa nie są krytyczne
+(`DEVICE_NAME` w [src/main.cpp](src/main.cpp)).
 
 ### Reklama (advertising)
 
 | Element | Wartość (przykład) | Uwaga |
 |---|---|---|
-| **Adres BLE** | `EC:07:A9:B8:C1:B7`, typ **random static** | **najważniejsze** — Żappka łączy po MAC; inny adres → „nie znaleziono triki" |
+| **Adres BLE** | MAC Twojego kapsla, typ **random static** | **najważniejsze** — Żappka łączy po MAC; inny adres → „nie znaleziono triki" |
 | Flags | `0x06` (LE General Disc + BR/EDR not supp.) | AD type `0x01` |
 | Local name | `Triki 1234567890` | AD type `0x09`; sufiks = Device ID (przykładowy, niekrytyczny) |
 | Manufacturer data | company `0xFF00`, payload `a0 0a` | AD type `0xFF` |
@@ -35,10 +36,24 @@ nie działa — sprawdzone). Numer (Device ID) i nazwa nie są krytyczne. Ustawi
 Układ jak w kapslu: ADV = flags + mfr + name; SCAN_RSP = service UUID `0x0001`.
 **Uwaga:** kapsel **nie** reklamuje 128-bitowego UUID NUS — nie dodawaj go do reklamy.
 
-Adres MAC jest **specyficzny dla egzemplarza** — żeby użyć własnego kapsla, odczytaj jego
-adres dowolnym skanerem BLE ([TrikiScope](https://github.com/Maku-hub/TrikiScope), nRF Connect)
-— adres, nazwa, manufacturer data i service UUID są wprost w reklamie — i wpisz adres w
-`BLE_ADDR_LE` (bajty LSB-first). Typ adresu i resztę potwierdza Android HCI snoop.
+### Ustawienie adresu MAC
+
+Adres MAC jest **specyficzny dla egzemplarza**, więc nie jest wpisany w kod. Odczytaj go
+z reklamy własnego kapsla dowolnym skanerem BLE ([TrikiScope](https://github.com/Maku-hub/TrikiScope),
+nRF Connect) — adres, nazwa, manufacturer data i service UUID są wprost w reklamie — i ustaw
+na płytce po USB-serial:
+
+```bash
+python tools/pc_control.py set-mac EC:00:00:00:00:01   # Twój adres; bez argumentu zapyta
+python tools/pc_control.py show-mac                    # sprawdzenie
+```
+
+Firmware sprawdza, czy to adres **random static** (pierwszy bajt `C0`–`FF`), zapisuje go w
+pamięci nieulotnej płytki (NVS — przetrwa restart, deep sleep i ponowne wgranie firmware'u)
+i restartuje się z nowym adresem. Dzięki temu jeden obraz firmware'u (np. z Releases) działa
+z każdym kapslem. Dopóki adres nie jest ustawiony, emulator reklamuje się **przykładowym**
+`C0:DE:00:00:00:01` (wystarczy do testu TrikiScope, Żappka go nie przyjmie), a log i ekran M5
+przypominają o konfiguracji. Typ adresu potwierdza Android HCI snoop.
 
 ### Profil GATT
 
@@ -158,6 +173,8 @@ Protokół linii (zakończone `\n`):
 | `BLE,1` / `BLE,0` | włącz / wyłącz reklamę BLE (parowanie) |
 | `M,gx,gy,gz,ax,ay,az` | ustaw ruch (gyro °/s, accel g) — włącza tryb „ruch z PC" |
 | `R` | powrót do źródła domyślnego (IMU na M5; spoczynek na gołym ESP32) |
+| `ADDR` | pokaż adres BLE (MAC) i czy jest skonfigurowany |
+| `ADDR,XX:XX:XX:XX:XX:XX` | ustaw MAC kapsla (random static): zapis w NVS + restart; zły adres → `ADDR BLAD` |
 
 Gotowe narzędzia PC (`pc_control`, `pc_keyboard` ze sterowaniem klawiaturą, `pc_motion_file`,
 `pc_motion_feed`, `pc_replay_capture`) oraz format pliku ruchu CSV są opisane w

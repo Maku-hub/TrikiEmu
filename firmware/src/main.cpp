@@ -12,10 +12,13 @@
 //   M,gx,gy,gz,ax,ay,az   ustaw ruch (gyro deg/s, accel g); wlacza tryb "ruch z PC"
 //   R                     powrot do zrodla domyslnego (IMU na M5, spoczynek na golym ESP32)
 //   BLE,1 / BLE,0         wlacz/wylacz reklame BLE (parowanie) — wazne na plytkach bez przyciskow
+//   ADDR                  pokaz adres BLE (MAC) i czy jest skonfigurowany
+//   ADDR,XX:XX:XX:XX:XX:XX  ustaw MAC kapsla (random static), zapis w NVS + restart
 //
 // M5StickC Plus2 (HAS_M5) dodatkowo: A = reklama on/off, B(2s) = deep sleep (wybudzenie A).
 
 #include <NimBLEDevice.h>
+#include <Preferences.h>
 #include <math.h>
 
 // Funkcje hosta NimBLE (linkowane z biblioteki): ustawienie statycznego adresu
@@ -42,11 +45,17 @@ static const char* TRIKIEMU_VERSION = "1.0.0";
 static const char* DEVICE_NAME   = "Triki 1234567890";
 static const char* FIRMWARE_REV  = "3.2.1-A";
 
-// Adres BLE prawdziwego kapsla — RANDOM STATIC: EC:07:A9:B8:C1:B7.
-// MAC JEST WYMAGANY: Zappka rozpoznaje zapamietany kapsel po adresie — emulator z
-// innym MAC dostaje "nie znaleziono triki" (sprawdzone: przykladowy adres nie dziala).
-// Chcac uzyc wlasnego kapsla, wpisz tu jego adres. NimBLE: bajty LSB-first.
-static uint8_t BLE_ADDR_LE[6] = {0xB7, 0xC1, 0xB8, 0xA9, 0x07, 0xEC};
+// Adres BLE (MAC) kapsla — RANDOM STATIC. MAC JEST WYMAGANY: Zappka rozpoznaje
+// zapamietany kapsel po adresie — emulator z innym MAC dostaje "nie znaleziono triki".
+// Adres jest per egzemplarz, wiec NIE jest wpisany w kod: ustawia sie go z PC komenda
+// ADDR,XX:XX:XX:XX:XX:XX (zapis w NVS, przetrwa restart i deep sleep). Do tego czasu
+// uzywany jest adres PRZYKLADOWY (wystarczy do testu TrikiScope, Zappka go nie przyjmie).
+// NimBLE: bajty LSB-first.
+static const uint8_t EXAMPLE_ADDR_LE[6] = {0x01, 0x00, 0x00, 0x00, 0xDE, 0xC0}; // C0:DE:00:00:00:01
+static uint8_t BLE_ADDR_LE[6];
+static bool    gAddrConfigured = false;
+static const char* NVS_NS       = "trikiemu";
+static const char* NVS_KEY_ADDR = "addr";
 
 // Adres MAC jako tekst do logu/ekranu (BLE_ADDR_LE jest LSB-first, wiec odwracamy).
 static const char* macStr() {
@@ -55,6 +64,56 @@ static const char* macStr() {
            BLE_ADDR_LE[5], BLE_ADDR_LE[4], BLE_ADDR_LE[3],
            BLE_ADDR_LE[2], BLE_ADDR_LE[1], BLE_ADDR_LE[0]);
   return buf;
+}
+
+// Parsuje "XX:XX:XX:XX:XX:XX" (lub z '-') do LSB-first i sprawdza, czy to poprawny
+// adres random static: dwa najstarsze bity = 11, a pozostale 46 bitow nie same 0 ani 1.
+static bool parseStaticAddr(const char* s, uint8_t out_le[6]) {
+  unsigned v[6];
+  char sep[5];
+  if (sscanf(s, "%2x%c%2x%c%2x%c%2x%c%2x%c%2x", &v[0], &sep[0], &v[1], &sep[1], &v[2],
+             &sep[2], &v[3], &sep[3], &v[4], &sep[4], &v[5]) != 11) return false;
+  if (strlen(s) != 17) return false;
+  for (int i = 0; i < 5; i++) if (sep[i] != ':' && sep[i] != '-') return false;
+  if ((v[0] & 0xC0) != 0xC0) return false;
+  bool allZero = (v[0] & 0x3F) == 0, allOne = (v[0] & 0x3F) == 0x3F;
+  for (int i = 1; i < 6; i++) { allZero &= v[i] == 0x00; allOne &= v[i] == 0xFF; }
+  if (allZero || allOne) return false;
+  for (int i = 0; i < 6; i++) out_le[i] = (uint8_t)v[5 - i];
+  return true;
+}
+
+// Wczytuje MAC z NVS; brak wpisu -> adres przykladowy.
+static void loadAddr() {
+  Preferences prefs;
+  prefs.begin(NVS_NS, false);   // RW: przy pierwszym starcie tworzy przestrzen (bez bledu w logu)
+  gAddrConfigured = prefs.getBytes(NVS_KEY_ADDR, BLE_ADDR_LE, 6) == 6;
+  prefs.end();
+  if (!gAddrConfigured) memcpy(BLE_ADDR_LE, EXAMPLE_ADDR_LE, 6);
+}
+
+static void printAddr() {
+  Serial.printf("[TrikiEmu] ADDR %s (%s)\n", macStr(),
+                gAddrConfigured ? "skonfigurowany" : "PRZYKLADOWY - ustaw: ADDR,XX:XX:XX:XX:XX:XX");
+}
+
+// Komenda ADDR,<mac>: zapis w NVS i restart (adres BLE ustawia sie tylko przy starcie stosu).
+static void setAddrFromSerial(const char* text) {
+  uint8_t le[6];
+  if (!parseStaticAddr(text, le)) {
+    Serial.println("[TrikiEmu] ADDR BLAD: oczekiwano XX:XX:XX:XX:XX:XX, typ random static "
+                   "(pierwszy bajt C0-FF)");
+    return;
+  }
+  Preferences prefs;
+  prefs.begin(NVS_NS, false);
+  bool ok = prefs.putBytes(NVS_KEY_ADDR, le, 6) == 6;
+  prefs.end();
+  if (!ok) { Serial.println("[TrikiEmu] ADDR BLAD: zapis do NVS nieudany"); return; }
+  Serial.println("[TrikiEmu] ADDR zapisany -> restart");
+  Serial.flush();
+  delay(100);
+  ESP.restart();
 }
 
 // ---- Skale sprzetowe oczekiwane przez format ramki (LSM6DSL) ----
@@ -159,8 +218,13 @@ static void drawStatus() {
   M5.Display.setTextColor(TFT_WHITE);
   M5.Display.printf("%s\n", DEVICE_NAME);
   M5.Display.setTextSize(1);
-  M5.Display.setTextColor(TFT_DARKGREY);
-  M5.Display.printf("%s\n", macStr());
+  if (gAddrConfigured) {
+    M5.Display.setTextColor(TFT_DARKGREY);
+    M5.Display.printf("%s\n", macStr());
+  } else {
+    M5.Display.setTextColor(TFT_RED);
+    M5.Display.printf("%s PRZYKLAD\nustaw MAC: ADDR,...\n", macStr());
+  }
   M5.Display.setTextSize(2);
   M5.Display.setTextColor(TFT_WHITE);
   if (gSerialMotion) M5.Display.println("ruch: z PC");
@@ -418,6 +482,10 @@ static void pollSerialMotion() {
           gSerialMotion = false;
         } else if (strncmp(lineBuf, "BLE,", 4) == 0) {
           setAdvertising(lineBuf[4] == '1');
+        } else if (strncmp(lineBuf, "ADDR,", 5) == 0) {
+          setAddrFromSerial(lineBuf + 5);
+        } else if (strcmp(lineBuf, "ADDR") == 0) {
+          printAddr();
         }
         lineLen = 0;
       }
@@ -482,6 +550,8 @@ void setup() {
                 TRIKIEMU_VERSION, (int)getCpuFrequencyMhz());
 #endif
 
+  loadAddr();
+  printAddr();
   setupBle();
 
 #ifdef HAS_M5
