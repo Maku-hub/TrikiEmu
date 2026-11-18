@@ -161,6 +161,8 @@ pio run -e esp32dev -t upload        # wgrywa na gole ESP32 (DevKit)
 pio device monitor                   # log szeregowy (115200)
 ```
 
+> Gotowe są też `env:esp32s3` (ESP32-S3-DevKitC-1) i `env:esp32c3` (ESP32-C3-DevKitM-1) —
+> budowane w CI, na sprzęcie jeszcze niesprawdzone. ESP32-S2 nie ma Bluetooth (nieobsługiwany).
 > Inne ESP32: dodaj własne `env` z odpowiednim `board` (rdzeń bez `-D HAS_M5`).
 > Pierwszy build pobiera toolchain ESP32 (kilka minut).
 

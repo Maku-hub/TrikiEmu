@@ -23,8 +23,12 @@
 
 // Funkcje hosta NimBLE (linkowane z biblioteki): ustawienie statycznego adresu
 // random oraz konfiguracja prywatnosci (0 = wylacz RPA -> uzyj statycznego adresu).
+// Prywatnosc po stronie hosta jest tylko na klasycznym ESP32; na S3/C3 robi ja kontroler
+// i setOwnAddrType() jej nie wlacza (funkcji ble_hs_pvcy_rpa_config tam nie ma).
 extern "C" int ble_hs_id_set_rnd(const uint8_t *rnd_addr);
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
 extern "C" int ble_hs_pvcy_rpa_config(uint8_t enabled);
+#endif
 
 #ifdef HAS_M5
   #include <M5Unified.h>
@@ -379,7 +383,9 @@ static void setupBle() {
   // setOwnAddrType(RANDOM) w NimBLE-Arduino wlacza RPA (adres prywatny), wiec
   // jawnie wylaczamy prywatnosc i ustawiamy nasz staly adres (BLE_ADDR_LE).
   NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
   ble_hs_pvcy_rpa_config(0); // 0 = wylacz RPA -> uzyj statycznego adresu random
+#endif
   int rc = ble_hs_id_set_rnd(BLE_ADDR_LE);
   Serial.printf("[TrikiEmu] adres random static rc=%d (%s)\n", rc, macStr());
 
@@ -388,6 +394,9 @@ static void setupBle() {
 
   server = NimBLEDevice::createServer();
   server->setCallbacks(new ServerCB());
+  // NimBLE domyslnie sam wznawia reklame po rozlaczeniu — rowniez po BLE,0 / timeoucie,
+  // gdy reklama ma byc WYLACZONA. Wznawianie robi nasz onDisconnect (tylko w MODE_ADV).
+  server->advertiseOnDisconnect(false);
 
   // --- Nordic UART Service ---
   NimBLEService* nus = server->createService(NUS_SERVICE);
@@ -465,6 +474,11 @@ static void setAdvertising(bool on) {
   drawStatus();
 }
 
+static bool allFinite(const float* v, int n) {
+  for (int i = 0; i < n; i++) if (!isfinite(v[i])) return false;
+  return true;
+}
+
 // Odbiera z PC linie sterujace (USB-serial): ruch (M/R) oraz reklame BLE (BLE,1/0).
 static void pollSerialMotion() {
   while (Serial.available()) {
@@ -475,7 +489,8 @@ static void pollSerialMotion() {
         float vv[6];
         if (lineBuf[0] == 'M' &&
             sscanf(lineBuf + 1, ",%f,%f,%f,%f,%f,%f",
-                   &vv[0], &vv[1], &vv[2], &vv[3], &vv[4], &vv[5]) == 6) {
+                   &vv[0], &vv[1], &vv[2], &vv[3], &vv[4], &vv[5]) == 6 &&
+            allFinite(vv, 6)) {                       // nan/inf -> linia ignorowana
           for (int i = 0; i < 6; i++) gMotion[i] = vv[i];
           gSerialMotion = true;
         } else if (lineBuf[0] == 'R') {
@@ -601,8 +616,12 @@ void loop() {
   if (streaming && deviceConnected) {
     if (txPendLen > 0) pumpTx();   // dokoncz przerwany cykl, zanim pojdzie nastepny
     uint32_t now = micros();
-    if ((int32_t)(now - lastFrameUs) >= (int32_t)FRAME_PERIOD_US) {
-      lastFrameUs += FRAME_PERIOD_US;
+    uint32_t late = now - lastFrameUs;
+    if (late >= FRAME_PERIOD_US) {
+      // Rowne ~100 Hz jak czujnik: po dluzszym przycieciu loop() nie nadrabiamy zaleglych
+      // ramek seria (co ~1 ms), tylko je gubimy i wracamy do rytmu.
+      if (late >= 3 * FRAME_PERIOD_US) lastFrameUs = now;
+      else lastFrameUs += FRAME_PERIOD_US;
 
       float gx, gy, gz, ax, ay, az;
       if (gSerialMotion) {
