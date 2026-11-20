@@ -14,8 +14,11 @@
 //   BLE,1 / BLE,0         wlacz/wylacz reklame BLE (parowanie) — wazne na plytkach bez przyciskow
 //   ADDR                  pokaz adres BLE (MAC) i czy jest skonfigurowany
 //   ADDR,XX:XX:XX:XX:XX:XX  ustaw MAC kapsla (random static), zapis w NVS + restart
+//   B                     klikniecie przycisku kapsla (~150 ms, bit 0 bajtu status w ramce)
+//   B,1 / B,0             przycisk kapsla wcisniety / puszczony (przytrzymanie)
 //
-// M5StickC Plus2 (HAS_M5) dodatkowo: A = reklama on/off, B(2s) = deep sleep (wybudzenie A).
+// M5StickC Plus2 (HAS_M5) dodatkowo: A = reklama on/off (w trakcie strumienia: przycisk
+// kapsla), B(2s) = deep sleep (wybudzenie A).
 
 #include <NimBLEDevice.h>
 #include <Preferences.h>
@@ -42,7 +45,7 @@ static const char* NUS_TX      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // noti
 static const char* NUS_VENDOR  = "6e400004-b5a3-f393-e0a9-e50e24dcca9e"; // read/write (bit0 = LED)
 
 // ---- Wersja firmware TrikiEmu (rozna od emulowanej fw kapsla "3.2.1-A") ----
-static const char* TRIKIEMU_VERSION = "1.0.0";
+static const char* TRIKIEMU_VERSION = "1.2.0";
 
 // ---- Tozsamosc (z prawdziwego kapsla) ----
 // DEVICE_NAME: numer (Device ID) to przyklad — sama nazwa/numer nie sa krytyczne.
@@ -121,11 +124,15 @@ static void setAddrFromSerial(const char* text) {
 }
 
 // ---- Skale sprzetowe oczekiwane przez format ramki (LSM6DSL) ----
-static const float GYRO_SCALE  = 131.0f;   // LSB/(deg/s)  -> ~±250 dps full scale
-static const float ACCEL_SCALE = 2048.0f;  // LSB/g        -> ~±16 g full scale
+// START ustawia ±16 g i ±2000 deg/s; gyro 70 mdps/LSB wg noty (pomiar na kapslu: 14.26).
+static const float GYRO_SCALE  = 1000.0f / 70.0f; // 14.2857 LSB/(deg/s) -> ±2000 dps
+static const float ACCEL_SCALE = 2048.0f;         // LSB/g -> ±16 g
 
 // ---- Komendy na RX ----
-// START: 20 10 00 D0 07 34 00 03   STOP: 20 00 00 00 00 00 00
+// START: 20 | u16 LE zakres accel [g] | u16 LE zakres gyro [dps] | u16 LE ODR [Hz] | 03
+//        Zappka: 20 10 00 D0 07 34 00 03 (16 g, 2000 dps, 52 Hz).
+//        Parametry sa ignorowane: skale stale jak wyzej, strumien stale ~100 Hz.
+// STOP:  20 00 00 00 00 00 00
 static const uint8_t CMD_START_PREFIX[] = {0x20, 0x10};
 static const uint8_t CMD_STOP_PREFIX[]  = {0x20, 0x00};
 
@@ -164,6 +171,13 @@ static uint32_t advStartedMs = 0;
 static volatile float gMotion[6] = {0, 0, 0, 0, 0, 1.0f}; // spoczynek: az=1g
 static volatile bool  gSerialMotion = false;
 static char lineBuf[80];
+
+// Przycisk kapsla (bit 0 bajtu status ramki IMU; kapsel nie wysyla osobnej wiadomosci).
+// Zrodla: PC (B / B,1 / B,0) oraz na M5 przycisk A w trakcie strumienia. Tylko loop().
+static const uint32_t BTN_TAP_MS = 150;
+static bool     btnHeld      = false;   // B,1
+static uint32_t btnTapUntil  = 0;       // koniec klikniecia (millis)
+static bool     btnLast      = false;   // do logu zmian stanu
 static int  lineLen = 0;
 
 #ifdef HAS_M5
@@ -239,7 +253,8 @@ static void drawStatus() {
   M5.Display.setTextSize(1);
   M5.Display.setTextColor(TFT_DARKGREY);
   M5.Display.setCursor(0, M5.Display.height() - 16);
-  M5.Display.println(appMode == MODE_IDLE ? "A: wlacz BLE" : "A: wylacz BLE");
+  M5.Display.println(streaming ? "A: przycisk kapsla"
+                     : appMode == MODE_IDLE ? "A: wlacz BLE" : "A: wylacz BLE");
   M5.Display.print("B (2s): uspij");
   M5.Display.setTextSize(2);
 }
@@ -334,6 +349,7 @@ static void startStreaming() {
 
 static void stopStreaming() {
   streaming = false;
+  btnHeld = false; btnTapUntil = millis();   // nie zostawiaj przycisku wcisnietego na nastepna runde
   streamAccLen = 0;
   clearTx();
   Serial.printf("[TrikiEmu] STOP -> strumien OFF (pominiete cykle: %u)\n", (unsigned)txDropped);
@@ -495,6 +511,12 @@ static void pollSerialMotion() {
           gSerialMotion = true;
         } else if (lineBuf[0] == 'R') {
           gSerialMotion = false;
+          btnHeld = false;                            // powrot do stanu domyslnego
+        } else if (strcmp(lineBuf, "B") == 0) {
+          btnTapUntil = millis() + BTN_TAP_MS;        // kolejne B przedluza klikniecie
+        } else if (strncmp(lineBuf, "B,", 2) == 0) {
+          btnHeld = lineBuf[2] == '1';
+          if (!btnHeld) btnTapUntil = millis();
         } else if (strncmp(lineBuf, "BLE,", 4) == 0) {
           setAdvertising(lineBuf[4] == '1');
         } else if (strncmp(lineBuf, "ADDR,", 5) == 0) {
@@ -582,6 +604,15 @@ void setup() {
 #endif
 }
 
+// Stan przycisku kapsla dla biezacej ramki.
+static bool capButtonPressed() {
+  bool on = btnHeld || (int32_t)(btnTapUntil - millis()) > 0;
+#ifdef HAS_M5
+  on = on || (streaming && M5.BtnA.isPressed());
+#endif
+  return on;
+}
+
 void loop() {
 #ifdef HAS_M5
   M5.update();
@@ -595,7 +626,7 @@ void loop() {
   // --- Przyciski ---
   if (M5.BtnA.wasPressed()) {
     if (!screenOn) { setScreen(true); }
-    else { setAdvertising(appMode == MODE_IDLE); }
+    else if (!streaming) { setAdvertising(appMode == MODE_IDLE); }  // w strumieniu A = przycisk kapsla
     lastInteractMs = millis();
   }
   if (M5.BtnB.wasPressed()) { setScreen(true); lastInteractMs = millis(); }
@@ -637,8 +668,13 @@ void loop() {
         }
 #endif
       }
-      // status: bit0 = przycisk. Niewykorzystywany w grach -> 0x00.
-      buildFrame(streamAcc + streamAccLen, 0x00, gx, gy, gz, ax, ay, az);
+      // status: bit0 = przycisk kapsla.
+      bool btn = capButtonPressed();
+      if (btn != btnLast) {
+        btnLast = btn;
+        Serial.println(btn ? "[TrikiEmu] przycisk WCISNIETY" : "[TrikiEmu] przycisk puszczony");
+      }
+      buildFrame(streamAcc + streamAccLen, btn ? 0x01 : 0x00, gx, gy, gz, ax, ay, az);
       streamAccLen += 14;
 
       if (streamAccLen >= 42) {

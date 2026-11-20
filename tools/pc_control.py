@@ -7,11 +7,14 @@ Protokol firmware (linie \\n):
   M,gx,gy,gz,ax,ay,az    ustaw ruch (gyro deg/s, accel g)
   ADDR                   pokaz adres BLE (MAC)
   ADDR,XX:XX:XX:XX:XX:XX ustaw MAC kapsla (zapis w pamieci plytki + restart)
+  B / B,1 / B,0          klikniecie / wcisniecie / puszczenie przycisku kapsla
 
 Uzycie:
     python tools/pc_control.py --port COM4 ble-on
     python tools/pc_control.py --port COM4 ble-off
     python tools/pc_control.py --port COM4 rest
+    python tools/pc_control.py button                   # klikniecie przycisku kapsla
+    python tools/pc_control.py button-down              # ... button-up puszcza
     python tools/pc_control.py --port COM4 raw "M,0,0,90,0,0,1"
     python tools/pc_control.py show-mac
     python tools/pc_control.py set-mac                  # zapyta o adres
@@ -26,6 +29,9 @@ ALIASES = {
     "ble-on":  "BLE,1",
     "ble-off": "BLE,0",
     "rest":    "R",
+    "button":      "B",     # klikniecie przycisku kapsla (~150 ms)
+    "button-down": "B,1",   # przytrzymanie
+    "button-up":   "B,0",
 }
 
 
@@ -45,7 +51,7 @@ def read_reply(s, seconds, mark):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", default=None, help="np. COM4 / /dev/ttyUSB0; domyslnie autodetekcja")
-    ap.add_argument("cmd", help="ble-on | ble-off | rest | raw | show-mac | set-mac")
+    ap.add_argument("cmd", help="ble-on | ble-off | rest | button | button-down | button-up | raw | show-mac | set-mac")
     ap.add_argument("arg", nargs="?", help="tresc dla 'raw' / adres dla 'set-mac'")
     args = ap.parse_args()
 

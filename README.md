@@ -86,7 +86,7 @@ mostka ESP32); `--port` podajesz tylko przy kilku płytkach.
 
 | Narzędzie | Do czego |
 |---|---|
-| `pc_control.py` | jednorazowe komendy: `ble-on` / `ble-off` / `rest` / `raw "..."` / `set-mac` / `show-mac` |
+| `pc_control.py` | jednorazowe komendy: `ble-on` / `ble-off` / `rest` / `button` / `button-down` / `button-up` / `raw "..."` / `set-mac` / `show-mac` |
 | `pc_keyboard.py` | **sterowanie na żywo z klawiatury**: obrót/przechył (gry lewo/prawo) + `f`=flap/„szarpnięcie" (gry typu FlappyBird) |
 | `pc_game2_drive.py` | gra „wąż z kulek": skręt (gyro Z) z **ruchu myszy** albo `a/d`/strzałek (`--input keys`) |
 | `pc_motion_file.py` | **odtwarzanie sekwencji ruchu z pliku CSV** |
@@ -97,10 +97,14 @@ mostka ESP32); `--port` podajesz tylko przy kilku płytkach.
 - **TRYB GIER** (domyślny): lewo/prawo (`q`=lewo, `e`=prawo, `a/d`=X, `w/s`=Y, `[`/`]`=siła,
   spacja=zeruj) + FlappyBird (`f`=flap, `,`/`.`=siła flapa).
 - **TRYB RZUTU** (podrzut+obroty): klawisze gier wyłączone; wpisujesz **dwie cyfry
-  00–20** → rzut następuje automatycznie. Kształt wzorowany na realnym capture (wirowanie z
+  02–20** → rzut następuje automatycznie. Kształt wzorowany na realnym capture (wirowanie z
   nasyconym żyrem + oscylujący wektor accel); autotest liczy obroty z tej oscylacji
-  (potwierdzone: odtworzenie nagrania daje dokładny licznik).
-- Wspólne: `t`=wejście/wyjście trybu rzutu, `b/n`=BLE on/off, `x`=wyjście. Legenda raz na
+  (potwierdzone: odtworzenie nagrania daje dokładny licznik). Gra nie pokazuje 1 obrotu
+  (krótszy rzut nie jest liczony, dłuższy daje już 2). `--throw-cal`: dwie cyfry oznaczają
+  czas wirowania ×10 ms (do kalibracji).
+- Wspólne: `p`=przycisk kapsla (gry, które go wymagają; przytrzymanie `p` = przytrzymanie
+  przycisku, w czystym Wayland tylko kliknięcia),
+  `t`=wejście/wyjście trybu rzutu, `b/n`=BLE on/off, `x`=wyjście. Legenda raz na
   górze; stan w jednej odświeżanej linii (nie przewija konsoli).
 
 **Plik** (`python tools/pc_motion_file.py tools/motion_examples/demo.csv`): CSV 7-kolumnowy
@@ -125,6 +129,7 @@ może działać jak kapsel — **ruszasz płytką, a gra reaguje**. Komputer nie
   aż do komendy `R` — narzędzia z `tools/` wysyłają ją same przy wyjściu.
 - Odczyty IMU idą do gry bez przemapowania osi, a płytka ma inny kształt i ułożenie
   czujnika niż kapsel — kierunki ruchu mogą się różnić od prawdziwego Triki.
+- W trakcie gry przycisk **A** działa jak przycisk kapsla.
 - Na gołym ESP32 (bez IMU) domyślnie nadawany jest spoczynek; ruch tylko z PC.
 
 ## Przenośność (dowolny ESP32)

@@ -3,7 +3,7 @@
 
 Gra 2 steruje OBROTEM kapsla (gyro/yaw), nie statycznym przechylem - tak jak
 klawisze q/e w pc_keyboard.py (ustawialy gz). Wysylamy gz [deg/s], accel plasko.
-Gra NASYCA skret ~30 deg/s (powyzej bez roznicy) - stad maly domyslny max-rate.
+Gra NASYCA skret ok. 275 deg/s (powyzej bez roznicy) - stad domyslny max-rate.
 
 Model wejscia:
   --input mouse (domyslne): gz ~ PREDKOSC ruchu myszy w poziomie. Ruszasz mysz
@@ -42,8 +42,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", default=None)
     ap.add_argument("--input", default="mouse", choices=["mouse", "keys"])
-    ap.add_argument("--max-rate", type=float, default=30.0, help="maks. predkosc obrotu [deg/s]; gra nasyca ~30")
-    ap.add_argument("--mouse-gain", type=float, default=0.015, help="deg/s na (px/s) ruchu myszy; mniej = delikatniej")
+    ap.add_argument("--max-rate", type=float, default=275.1, help="maks. predkosc obrotu [deg/s]; gra nasyca ~275")
+    ap.add_argument("--mouse-gain", type=float, default=0.13755, help="deg/s na (px/s) ruchu myszy; mniej = delikatniej")
     ap.add_argument("--mouse-deadzone", type=float, default=40.0, help="px/s ponizej = brak skretu (anty-drzenie)")
     ap.add_argument("--smooth-ms", type=float, default=60.0, help="stala czasowa dochodzenia gz")
     ap.add_argument("--release-ms", type=float, default=140.0, help="keys: powrot do prosto po puszczeniu")
@@ -75,7 +75,7 @@ def main():
             f"  WEJSCIE: {args.input}   {'rusz mysz=skret, stop=prosto' if args.input=='mouse' else 'a/d lub strzalki'}"
             f"   invert={'T' if args.invert else 'N'}",
             f"  {src}  cel_gz={target:+6.1f}  akt_gz={actual_rate:+6.1f} deg/s  ({side})",
-            f"  max={args.max_rate:.0f}deg/s  gain={args.mouse_gain:.3f}  dz={args.mouse_deadzone:.0f}px/s"
+            f"  max={args.max_rate:.0f}deg/s  gain={args.mouse_gain:.5f}  dz={args.mouse_deadzone:.0f}px/s"
             f"  smooth={args.smooth_ms:.0f}ms",
             f"  b/n=BLE:{ble_state:<3}  spacja=zeruj  x=wyjscie",
         ]

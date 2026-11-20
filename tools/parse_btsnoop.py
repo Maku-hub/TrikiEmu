@@ -6,7 +6,8 @@ Robi to, czego tshark nie pokazuje wprost (handle NUS niezmapowane do UUID):
 - notyfikacje TX (handle 0x000f): sklejone w ciagly strumien i pociete na
   ramki 14 B IMU (naglowek 0x22, status, 6x int16 LE: gyro XYZ, accel XYZ).
 
-Skale sprzetowe (LSM6DSL): gyro 131.0 LSB/(deg/s), accel 2048.0 LSB/g.
+Skale sprzetowe (LSM6DSL, ustawione komenda START: +-2000 dps, +-16 g):
+gyro 1000/70 = 14.2857 LSB/(deg/s), accel 2048.0 LSB/g.
 Handle (z tej sesji): RX=0x000d, TX=0x000f, CCCD TX=0x0010.
 
 Uzycie:
@@ -19,7 +20,7 @@ import sys
 RX_HANDLE = 0x000D     # telefon -> kapsel (komendy)
 TX_HANDLE = 0x000F     # kapsel -> telefon (strumien IMU)
 
-GYRO_SCALE = 131.0     # LSB/(deg/s)
+GYRO_SCALE = 1000.0 / 70.0   # LSB/(deg/s), 70 mdps/LSB
 ACCEL_SCALE = 2048.0   # LSB/g
 
 # btsnoop epoch: mikrosekundy od 0000-01-01; offset do epoki Unix.

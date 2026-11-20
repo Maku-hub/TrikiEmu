@@ -85,8 +85,13 @@ Baza UUID NUS: `6e400001-b5a3-f393-e0a9-e50e24dcca9e`.
 
 | Rola | Bajty | Uwaga |
 |---|---|---|
-| START | `20 10 00 D0 07 34 00 03` | bajt #5 bywa parametrem trybu (spec miał `0x68`); **rozpoznawaj po prefiksie `20 10`** |
-| STOP | `20 00 00 00 00 00 00` | prefiks `20 00` |
+| START | `20 10 00 D0 07 34 00 03` | `20` \| u16 LE zakres accel [g] \| u16 LE zakres gyro [°/s] \| u16 LE ODR [Hz] \| `03`; Żappka: ±16 g, ±2000 °/s, 52 Hz |
+| STOP | `20 00 00 00 00 00 00` | |
+
+Emulator rozpoznaje START po prefiksie `20 10`, a STOP po prefiksie `20 00`. Parametrów
+z START nie stosuje: skale są stałe (±16 g, ±2000 °/s), strumień idzie stale ~100 Hz.
+Prawdziwy kapsel honoruje ODR (przy 52 Hz od Żappki nadaje ~52 Hz). Gry działają
+z emulatorem przy 100 Hz, a stałe narzędzi PC są dostrojone pod to tempo.
 
 Po STARCIE wyślij **raz** ramkę „ready" `21 00 00 00 00` (5 B, nagłówek `0x21`),
 potem ciągły strumień IMU. STOP kończy strumień.
@@ -100,12 +105,18 @@ offset 0    1     2..3   4..5   6..7   8..9   10..11 12..13
        0x22 stat  gyroX  gyroY  gyroZ  accelX accelY accelZ
 ```
 
-- bajt 0: stały nagłówek `0x22`. bajt 1: status, bit 0 = przycisk (`0x00`/`0x01`;
-  w grach nieużywany, trzymaj `0x00`).
+- bajt 0: stały nagłówek `0x22`. bajt 1: status, bit 0 = przycisk kapsla (`0x00`
+  puszczony, `0x01` wciśnięty). Kapsel nie wysyła osobnej wiadomości o przycisku: przy
+  wciśnięciu zmienia się tylko ten bit w kolejnych ramkach (potwierdzone w TrikiScope).
+  Emulator ustawia go komendą `B` / `B,1` z PC albo przyciskiem A na M5.
 - bajty 2–13: 6× `int16` **little-endian ze znakiem** (gyro XYZ, accel XYZ).
-- Skale (LSM6DSL): gyro **131.0** LSB/(deg/s), accel **2048.0** LSB/g. Wartość int16 =
-  round(jednostka_fizyczna × skala), przycięta do zakresu int16 (kapsel też klipuje
-  przy ±250 °/s i ±16 g). Brak licznika sekwencji / CRC / znacznika czasu.
+- Skale (LSM6DSL przy ±2000 °/s i ±16 g): gyro **1000/70 = 14,2857** LSB/(°/s)
+  (70 mdps/LSB wg noty; pomiar obrotu o 360° na kapslu: 14,26), accel **2048.0** LSB/g.
+  Wartość int16 = round(jednostka_fizyczna × skala), przycięta do zakresu int16.
+  Brak licznika sekwencji / CRC / znacznika czasu.
+- Do wersji 1.1.0 emulator kodował gyro skalą 131 (z MPU-6050), czyli ~9,17× za mocno.
+  Dostrojone stałe narzędzi PC (`pc_keyboard.py`, `pc_game2_drive.py`) przeliczono tak,
+  że do aplikacji idą te same surowe wartości co wcześniej.
 
 ### Charakterystyka strumienia (odtworzyć wiernie)
 
@@ -175,6 +186,8 @@ Protokół linii (zakończone `\n`):
 | `BLE,1` / `BLE,0` | włącz / wyłącz reklamę BLE (parowanie) |
 | `M,gx,gy,gz,ax,ay,az` | ustaw ruch (gyro °/s, accel g) — włącza tryb „ruch z PC" |
 | `R` | powrót do źródła domyślnego (IMU na M5; spoczynek na gołym ESP32) |
+| `B` | kliknięcie przycisku kapsla (~150 ms; kolejne `B` przedłuża) |
+| `B,1` / `B,0` | przycisk kapsla wciśnięty / puszczony (przytrzymanie); `R` i STOP też puszczają |
 | `ADDR` | pokaż adres BLE (MAC) i czy jest skonfigurowany |
 | `ADDR,XX:XX:XX:XX:XX:XX` | ustaw MAC kapsla (random static): zapis w NVS + restart; zły adres → `ADDR BLAD` |
 
@@ -190,6 +203,8 @@ wyłączasz przez `BLE,0`. Na M5 startuje w IDLE (przycisk A włącza).
 ## Sterowanie na M5StickC Plus2 (przyciski / zasilanie / ekran)
 
 - **Przycisk A** (przedni): włącz/wyłącz reklamę BLE. Start w trybie **IDLE**.
+  **W trakcie strumienia** A działa jak przycisk kapsla (bit status w ramkach), a reklamę
+  wyłączysz wtedy tylko z PC (`BLE,0`).
 - **Przycisk B** przytrzymany **2 s**: uśpienie (deep sleep, ~µA — urządzenie stygnie).
   **Wybudzenie: przycisk A.** (Nie jest używane `M5.Power.powerOff()` — na USB zostawiało
   płytkę w stanie nie do włączenia.)

@@ -7,6 +7,8 @@
   strzalek 'LEFT' / 'RIGHT' / 'UP' / 'DOWN'.
 - get_cursor_x(): pozioma pozycja kursora myszy (Windows: GetCursorPos; Linux: X11
   XQueryPointer - dziala w sesji X11/XWayland, w czystym Wayland niedostepne).
+- key_is_down(ch): czy klawisz jest teraz wcisniety (Windows: GetAsyncKeyState; Linux:
+  X11 XQueryKeymap); None, gdy nie da sie tego sprawdzic.
 
 Uruchomione bezposrednio pokazuje wcisniete klawisze i pozycje myszy (x = wyjscie):
     python tools/_console.py
@@ -140,6 +142,40 @@ def get_cursor_x():
                       ctypes.byref(rx), ctypes.byref(ry), ctypes.byref(wx), ctypes.byref(wy),
                       ctypes.byref(mask))
     return rx.value
+
+
+# ---- stan klawisza (wcisniety teraz?) ----
+# Terminal podaje tylko wcisniecia (z autorepeatem), nie puszczenia. Do przytrzymania
+# czytamy rzeczywisty stan klawiatury: Windows GetAsyncKeyState, Linux X11 XQueryKeymap.
+
+_keycodes = {}
+
+
+def key_is_down(ch):
+    """True/False = czy klawisz litery `ch` jest teraz wcisniety; None = nie da sie sprawdzic
+    (np. czysty Wayland albo brak X11) - wtedy zostaje odczyt z terminala."""
+    if IS_WINDOWS:
+        try:
+            return bool(ctypes.windll.user32.GetAsyncKeyState(ord(ch.upper())) & 0x8000)
+        except Exception:
+            return None
+    try:
+        lib, disp, _root = _x11_init()
+    except SystemExit:
+        return None
+    if ch not in _keycodes:
+        lib.XStringToKeysym.restype = ctypes.c_ulong
+        lib.XStringToKeysym.argtypes = [ctypes.c_char_p]
+        lib.XKeysymToKeycode.restype = ctypes.c_ubyte
+        lib.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        lib.XQueryKeymap.argtypes = [ctypes.c_void_p, ctypes.c_char * 32]
+        _keycodes[ch] = lib.XKeysymToKeycode(disp, lib.XStringToKeysym(ch.lower().encode()))
+    code = _keycodes[ch]
+    if not code:
+        return None
+    keys = (ctypes.c_char * 32)()
+    lib.XQueryKeymap(disp, keys)
+    return bool(keys.raw[code // 8] & (1 << (code % 8)))
 
 
 if __name__ == "__main__":
